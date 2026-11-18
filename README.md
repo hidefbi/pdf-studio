@@ -126,6 +126,7 @@ Then run the tests.
 - Python 3.9 gets PyMuPDF 1.26.5 instead of 2.1, which only supports 3.11 and newer. The tests pass with both. Most test runs were on Python 3.13.
 - Large files take longer to render. Pages are cached, so scrolling gets faster after the first view.
 - A document can have up to 2000 pages. A single page can be drawn at about 50 million pixels at most, so a very large page needs a lower zoom for rendering, PNG export and OCR.
+- When a PDF is imported, its JavaScript and launch actions are removed. Links and attachments are kept. Files added before this change keep their scripts.
 
 ## Project layout
 

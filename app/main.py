@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+import struct
 import tempfile
 import threading
 import time
@@ -33,6 +34,9 @@ FONTS_DIR = DATA_DIR / "fonts"
 STATIC_DIR = BASE_DIR / "static"
 FONT_INDEX = FONTS_DIR / "index.json"
 MAX_FONT_BYTES = 30 * 1024 * 1024
+MAX_FONT_TABLES = 128
+FONT_MAGIC = (b"\x00\x01\x00\x00", b"true", b"OTTO")
+ACTIVE_MARKERS = ("/JavaScript", "/Launch")
 MAX_UPLOAD_BYTES = 500 * 1024 * 1024
 HISTORY_LIMIT = 30
 UPLOAD_CHUNK = 1024 * 1024
@@ -211,6 +215,66 @@ def _open_pdf_file(path: Path, password: str = "") -> tuple[fitz.Document, bool]
         doc.close()
         raise HTTPException(413, f"PDF has more than {MAX_PAGES} pages")
     return doc, locked
+
+
+def _mentions_active(doc: fitz.Document, text: str, depth: int = 0) -> bool:
+    # True if this object, or an object it points to, is a script or launch action.
+    if any(marker in text for marker in ACTIVE_MARKERS):
+        return True
+    if depth < 2:
+        for num in re.findall(r"(\d+) 0 R", text):
+            if _mentions_active(doc, doc.xref_object(int(num), compressed=False), depth + 1):
+                return True
+    return False
+
+
+def _drop_key(doc: fitz.Document, xref: int, key: str) -> None:
+    # Rewrite the dictionary without the key, so no empty placeholder is left behind.
+    kept = [f"/{name} {doc.xref_get_key(xref, name)[1]}" for name in doc.xref_get_keys(xref) if name != key]
+    doc.update_object(xref, "<< " + " ".join(kept) + " >>")
+
+
+def _strip_active_content(doc: fitz.Document) -> bool:
+    # We never run these, but a saved copy or an export would carry them to other viewers.
+    # Links, attachments and form fields are kept.
+    changed = False
+
+    def drop(xref: int, key: str) -> None:
+        nonlocal changed
+        typ, val = doc.xref_get_key(xref, key)
+        if typ != "null" and _mentions_active(doc, val):
+            _drop_key(doc, xref, key)
+            changed = True
+
+    cat = doc.pdf_catalog()
+    drop(cat, "OpenAction")
+    drop(cat, "AA")
+    typ, val = doc.xref_get_key(cat, "Names")
+    if typ == "xref":
+        names = int(val.split()[0])
+        if doc.xref_get_key(names, "JavaScript")[0] != "null":
+            _drop_key(doc, names, "JavaScript")
+            changed = True
+    for page in doc:
+        drop(page.xref, "AA")
+        for annot in list(page.annots() or []) + list(page.widgets() or []):
+            drop(annot.xref, "A")
+            drop(annot.xref, "AA")
+    return changed
+
+
+def _check_font_structure(data: bytes) -> None:
+    # Cheap checks before PyMuPDF parses the file: a font header and a sane table list.
+    if len(data) < 12 or data[:4] not in FONT_MAGIC:
+        raise HTTPException(400, "invalid font file")
+    num_tables = struct.unpack(">H", data[4:6])[0]
+    if not 1 <= num_tables <= MAX_FONT_TABLES or 12 + 16 * num_tables > len(data):
+        raise HTTPException(400, "invalid font file")
+    for i in range(num_tables):
+        pos = 12 + 16 * i
+        offset, length = struct.unpack(">II", data[pos + 8:pos + 16])
+        if offset + length > len(data):
+            raise HTTPException(400, "invalid font file")
 
 
 def _check_index(doc: fitz.Document, index: int) -> None:
@@ -967,8 +1031,12 @@ async def upload_doc(file: UploadFile = File(...), password: str = Form("")):
         doc, locked = _open_pdf_file(tmp, password)
         source = tmp
         try:
-            if locked:
-                # Store an unlocked copy, so later edits and undo work without the password.
+            try:
+                changed = _strip_active_content(doc)
+            except Exception:
+                raise HTTPException(400, "not a readable PDF")
+            if locked or changed:
+                # Store a copy without the password, and without scripts or launch actions.
                 plain = tmp.with_name(tmp.name + ".plain")
                 doc.save(plain, encryption=fitz.PDF_ENCRYPT_NONE, garbage=3, deflate=True)
                 source = plain
@@ -1746,6 +1814,7 @@ async def upload_font(file: UploadFile = File(...)):
     tmp = await _save_upload(file, MAX_FONT_BYTES, "font file is larger than 30 MB")
     try:
         data = tmp.read_bytes()
+        _check_font_structure(data)
         try:
             font = fitz.Font(fontbuffer=data)
         except Exception:
