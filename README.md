@@ -56,19 +56,19 @@ It started as a way to change a few lines in a PDF without paying for a full des
 ## Requirements
 
 - macOS. The launcher scripts use macOS commands (`open`, `shasum`, `lsof`). The app itself should also run on Linux if you start it by hand.
-- Python 3.9 or newer.
+- Python 3.9 or newer. OCR needs Python 3.12 or older.
 - A modern browser. Chrome, Edge, Safari, and Firefox all work.
 
 ## Install and start
 
-The easiest way is to double-click `start.command` in the project folder. The first run creates a virtual environment in `.venv`, installs the packages, and opens the app in your browser. The OCR package installs in the background, so you do not have to wait for it.
+Double-click `start.command`. The first run makes a `.venv` folder, installs the packages, and opens the app. The first run needs internet. After that you don't need it.
 
-If you prefer the terminal:
+Terminal version:
 
 ```bash
 cd pdf-studio
 python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install --require-hashes -r requirements.txt
 .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
@@ -76,10 +76,13 @@ Then open <http://127.0.0.1:8000> in your browser.
 
 To stop the app, run `stop.command`. The server also stops by itself a little after the last browser tab is closed.
 
-### Optional packages
+### OCR (optional)
 
-- **Word export:** `pdf2docx` is listed in `requirements.txt`, so it is installed with the rest.
-- **OCR:** `requirements-ocr.txt` installs `rapidocr-onnxruntime`. The model files come with the package, so OCR works without an internet connection.
+OCR isn't installed by default. If you want it, run `install-ocr.command` after the first start. It needs internet and it's a big download. Then run `stop.command` and start the app again.
+
+### How the packages are pinned
+
+`requirements.in` is the wish list. `requirements.txt` is the exact pinned version of it, with hashes. The launcher only installs from the pinned files. Word export (`pdf2docx`) is in the main list.
 
 ## Where your files go
 
@@ -90,30 +93,48 @@ Documents, uploaded fonts, and the undo history are kept in a `data` folder insi
 The tests use pytest for the API and Playwright with Chromium for the browser tests.
 
 ```bash
-.venv/bin/python -m pip install -r tests/requirements-dev.txt
+.venv/bin/python -m pip install --require-hashes -r tests/requirements-dev.txt
 .venv/bin/python -m playwright install chromium
 .venv/bin/python -m pytest tests -q
 ```
 
 The browser tests start their own copy of the server, so you can run them while the app is open.
 
+## Updating packages
+
+Only when you change something in a `.in` file.
+
+```bash
+python3 -m pip install uv
+uv pip compile requirements.in --universal --python-version 3.9 --generate-hashes --no-header -o requirements.txt
+uv pip compile requirements-ocr.in --universal --python-version 3.9 --generate-hashes --no-header -o requirements-ocr.txt
+uv pip compile tests/requirements-dev.in --universal --python-version 3.9 --generate-hashes --no-header -o tests/requirements-dev.txt
+```
+
+Then run the tests.
+
 ## Known limits
 
 - Letter spacing adds the same gap after every character. It does not use the font's kerning pairs.
 - Line spacing applies to new multi-line text. When you edit one existing line, the line keeps its own spacing.
 - Bold and italic detection for OCR text is a rough estimate. Check the result on important pages.
+- With OCR installed, both `opencv-python` and `opencv-python-headless` end up in the environment. They are the same version and work together, but it is untidy.
+- Python 3.9 gets PyMuPDF 1.26.5 instead of 2.1, which only supports 3.11 and newer. The tests pass with both. Most test runs were on Python 3.13.
 - Large files take longer to render. Pages are cached, so scrolling gets faster after the first view.
 
 ## Project layout
 
 ```
-app/           Python backend (FastAPI and PyMuPDF)
-static/        Browser front end: HTML, CSS, and ES modules in static/js
-static/locales English and Simplified Chinese text
-tests/         pytest and Playwright tests, with small sample PDFs
-docs/          Screenshots for this README
-start.command  Starts the app on macOS
-stop.command   Stops the app
+app/                 Python backend (FastAPI and PyMuPDF)
+static/              Browser front end (HTML, CSS, ES modules in static/js)
+static/locales/      English and Simplified Chinese text
+tests/               pytest and Playwright tests, with sample PDFs
+docs/                Screenshots for this README
+start.command        Starts the app on macOS
+stop.command         Stops the app
+install-ocr.command  Adds OCR (optional)
+requirements*.in     What the app needs
+requirements*.txt    Pinned versions, with hashes
 ```
 
 ## Contributing

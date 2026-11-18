@@ -16,7 +16,7 @@ Nothing in this list leaves your computer.
 - It does not send your documents, text, fonts, or images to any server.
 - It does not collect usage statistics, crash reports, or analytics.
 - It does not create an account or ask for an account password. If you open a password-protected PDF, the app asks for that file's password, and uses it only to open that file.
-- It does not download anything at runtime. OCR models are included with the OCR package.
+- It does not use the internet while it runs. Packages are downloaded from PyPI only when you install them: on the first start, after `requirements.txt` changes, and when you run `install-ocr.command`. The OCR models are inside that package.
 - It does not accept connections from other computers. The server listens on `127.0.0.1` only, and it rejects requests whose host name is not `127.0.0.1` or `localhost`.
 
 ## What the browser keeps

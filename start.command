@@ -34,21 +34,24 @@ done
 [ -n "$PORT" ] || exit 1
 URL="http://127.0.0.1:$PORT"
 
-# Install required packages only when requirements.txt changes.
+fail() {
+  echo ""
+  echo "$1"
+  read -r -p "Press Return to close this window." _
+  exit 1
+}
+
+# Packages are installed from the hash-locked file. Only the first run,
+# or a change to requirements.txt, needs the internet.
 if [ ! -x .venv/bin/python ]; then
-  python3 -m venv .venv >/dev/null 2>&1 || exit 1
+  python3 -m venv .venv >/dev/null 2>&1 || fail "Could not create the .venv folder. Is python3 installed?"
 fi
 REQ_HASH=$(shasum -a 256 requirements.txt | cut -d' ' -f1)
 if [ "$(cat .venv/.req-hash 2>/dev/null)" != "$REQ_HASH" ]; then
-  .venv/bin/python -m pip install -q -r requirements.txt >/dev/null 2>&1 || exit 1
+  echo "Installing packages. The first run needs an internet connection."
+  .venv/bin/python -m pip install -q --require-hashes -r requirements.txt \
+    || fail "Installing the packages failed. Check your internet connection and start again."
   echo "$REQ_HASH" > .venv/.req-hash
-fi
-# OCR installs in the background, so the app opens without waiting.
-OCR_HASH=$(shasum -a 256 requirements-ocr.txt | cut -d' ' -f1)
-if [ "$(cat .venv/.ocr-hash 2>/dev/null)" != "$OCR_HASH" ]; then
-  ( .venv/bin/python -m pip install -q -r requirements-ocr.txt >/dev/null 2>&1 \
-      && echo "$OCR_HASH" > .venv/.ocr-hash ) >/dev/null 2>&1 &
-  disown
 fi
 
 nohup .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port "$PORT" \

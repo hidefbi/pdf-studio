@@ -100,7 +100,7 @@
   "ocr_done": "已识别 {n} 行文字，点击文字即可编辑。",
   "ocr_none": "本页没有识别到文字。",
   "ocr_confirm": "本页已有文字，确定再次识别吗？",
-  "ocr_unavailable": "文字识别组件仍在安装中，请几分钟后再试。",
+  "ocr_unavailable": "尚未安装文字识别组件。请在项目文件夹中运行 install-ocr.command，然后重启 PDF Studio。",
   "style_smaller": "减小字号",
   "style_larger": "增大字号",
   "style_bold": "加粗",

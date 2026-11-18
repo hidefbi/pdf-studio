@@ -100,7 +100,7 @@
   "ocr_done": "Recognized {n} lines of text. Click a line to edit it.",
   "ocr_none": "No text was found on this page.",
   "ocr_confirm": "This page already has text. Recognize it again?",
-  "ocr_unavailable": "The text recognition add-on is still installing. Try again in a few minutes.",
+  "ocr_unavailable": "Text recognition is not installed. Run install-ocr.command in the project folder, then restart PDF Studio.",
   "style_smaller": "Smaller font size",
   "style_larger": "Larger font size",
   "style_bold": "Bold",
