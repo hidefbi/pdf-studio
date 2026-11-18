@@ -1,0 +1,13 @@
+# Your documents and the app's working data
+data/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Test output
+.pytest_cache/
+
+# macOS
+.DS_Store

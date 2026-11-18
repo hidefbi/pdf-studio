@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PDF Studio</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand" data-i18n="app_title">PDF Studio</div>
+    <label class="btn" for="file-input" data-i18n="open">Open</label>
+    <input id="file-input" type="file" accept="application/pdf" hidden>
+    <label class="btn" for="merge-input" data-i18n="merge">Merge</label>
+    <input id="merge-input" type="file" accept="application/pdf" multiple hidden>
+    <button id="undo" class="btn" data-i18n="undo">Undo</button>
+    <button id="redo" class="btn" data-i18n="redo">Redo</button>
+    <select id="export" class="btn">
+      <option value="" data-i18n="export">Export</option>
+      <option value="pdf" data-i18n="export_pdf">PDF</option>
+      <option value="readonly" data-i18n="export_readonly">Read-only PDF…</option>
+      <option value="docx" data-i18n="export_docx">Word (.docx)</option>
+      <option value="txt" data-i18n="export_txt">Text (.txt)</option>
+      <option value="png" data-i18n="export_png">Current page (PNG)</option>
+      <option value="images" data-i18n="export_images">All pages (ZIP)</option>
+    </select>
+    <button id="delete-doc" class="btn" data-i18n="delete_doc">Delete</button>
+    <div class="spacer"></div>
+    <select id="lang">
+      <option value="en">English</option>
+      <option value="zh-CN">简体中文</option>
+    </select>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <form id="search-form" class="search">
+        <input id="search-input" type="search" data-i18n-placeholder="search_placeholder" placeholder="Search text">
+        <button class="btn" data-i18n="search">Search</button>
+      </form>
+      <ul id="search-results"></ul>
+      <div id="thumbs"></div>
+    </aside>
+
+    <main class="workspace">
+      <div class="toolbar">
+        <button class="tool active" data-tool="select" data-i18n="tool_select">Select</button>
+        <button class="tool" data-tool="text" data-i18n="tool_text">Add text</button>
+        <button class="tool" data-tool="replace" data-i18n="tool_replace">Edit text</button>
+        <button class="tool" data-tool="highlight" data-i18n="tool_highlight">Highlight</button>
+        <button class="tool" data-tool="underline" data-i18n="tool_underline">Underline</button>
+        <button class="tool" data-tool="strikeout" data-i18n="tool_strike">Strikeout</button>
+        <button class="tool" data-tool="rect" data-i18n="tool_rect">Rectangle</button>
+        <button class="tool" data-tool="ink" data-i18n="tool_ink">Draw</button>
+        <button class="tool" data-tool="note" data-i18n="tool_note">Note</button>
+        <button class="tool" data-tool="image" data-i18n="tool_image">Image</button>
+        <button class="tool" data-tool="redact" data-i18n="tool_redact">Redact</button>
+        <span class="sep"></span>
+        <select id="font"></select>
+        <button id="size-down" class="btn small" data-i18n-title="size_down" title="Smaller">A−</button>
+        <input id="size" type="number" min="1" max="400" step="0.5" value="12" list="size-list" data-i18n-title="font_size" title="Font size">
+        <datalist id="size-list"></datalist>
+        <button id="size-up" class="btn small" data-i18n-title="size_up" title="Larger">A+</button>
+        <div id="swatches" class="swatches"></div>
+        <input id="color" type="color" value="#000000" data-i18n-title="custom_color" title="Custom color">
+        <button id="fonts-btn" class="btn small" data-i18n="fonts">Fonts</button>
+        <span class="sep"></span>
+        <button id="rotate" class="btn small" data-i18n="rotate">Rotate</button>
+        <button id="delete-page" class="btn small" data-i18n="delete_page">Delete page</button>
+        <button id="extract" class="btn small" data-i18n="extract">Extract pages</button>
+        <button id="insert-blank" class="btn small" data-i18n="insert_blank">Insert blank page</button>
+        <button id="stamp-open" class="btn small" data-i18n="stamp_open">Header / footer / watermark</button>
+        <button id="toc-open" class="btn small" data-i18n="toc_open">Bookmarks</button>
+        <button id="annots-open" class="btn small" data-i18n="annots_open">Comments</button>
+        <button id="ocr-page" class="btn small" data-i18n="ocr_page">Recognize text</button>
+        <span class="sep"></span>
+        <button id="zoom-out" class="btn small" data-i18n-title="zoom_out" title="Zoom out">−</button>
+        <button id="zoom-in" class="btn small" data-i18n-title="zoom_in" title="Zoom in">+</button>
+        <button id="prev" class="btn small" data-i18n="prev">Prev</button>
+        <span id="page-label"></span>
+        <button id="next" class="btn small" data-i18n="next">Next</button>
+      </div>
+
+      <div id="scroller">
+        <div id="empty" class="empty" data-i18n="no_doc">Open a PDF to start.</div>
+        <div id="stage" hidden>
+          <img id="page-img" alt="">
+          <svg id="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
+          <div id="textlayer"></div>
+          <div id="style-bar" class="style-bar" hidden>
+            <span class="style-count" hidden></span>
+            <button type="button" data-act="smaller" data-i18n-title="style_smaller">A&minus;</button>
+            <button type="button" data-act="larger" data-i18n-title="style_larger">A+</button>
+            <span class="style-sep"></span>
+            <button type="button" data-act="bold" class="fmt-bold" data-i18n-title="style_bold">B</button>
+            <button type="button" data-act="italic" class="fmt-italic" data-i18n-title="style_italic">I</button>
+            <button type="button" data-act="underline" class="fmt-underline" data-i18n-title="style_underline">U</button>
+            <span class="style-sep"></span>
+            <button type="button" data-act="align-left" data-align="left" data-i18n-title="style_align_left"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12M2 6.5h8M2 10h12M2 13.5h7"/></svg></button>
+            <button type="button" data-act="align-center" data-align="center" data-i18n-title="style_align_center"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12M4.5 6.5h7M2 10h12M4.5 13.5h7"/></svg></button>
+            <button type="button" data-act="align-right" data-align="right" data-i18n-title="style_align_right"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12M6 6.5h8M2 10h12M7 13.5h7"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <input id="image-input" type="file" accept="image/png,image/jpeg" hidden>
+  <div id="stopped" class="stopped" hidden>
+    <div class="stopped-box">
+      <h2 data-i18n="stopped_title">Server stopped</h2>
+      <p data-i18n="stopped_body">PDF Studio has stopped. You can close this tab.</p>
+    </div>
+  </div>
+  <div id="font-dialog" class="modal" hidden>
+    <div class="modal-box wide">
+      <h2 data-i18n="font_manager">Font manager</h2>
+      <div id="font-list" class="font-list"></div>
+      <div class="modal-actions">
+        <label class="btn" for="font-input" data-i18n="upload_font">Upload font</label>
+        <input id="font-input" type="file" accept=".ttf" multiple hidden>
+        <span class="spacer"></span>
+        <button id="font-close" class="btn" data-i18n="close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="readonly-dialog" class="modal" hidden>
+    <form id="readonly-form" class="modal-box">
+      <h2 data-i18n="readonly_title">Export read-only PDF</h2>
+      <p class="hint" data-i18n="readonly_hint">Like Acrobat's Restrict Editing and Printing.</p>
+      <label class="field"><span data-i18n="permissions_password">Permissions password</span>
+        <input id="ro-owner" type="password" autocomplete="new-password" required></label>
+      <label class="field"><span data-i18n="confirm_password">Confirm permissions password</span>
+        <input id="ro-owner2" type="password" autocomplete="new-password" required></label>
+      <label class="field"><span data-i18n="open_password">Open password (optional)</span>
+        <input id="ro-open" type="password" autocomplete="new-password"></label>
+      <label class="field"><span data-i18n="printing">Printing</span>
+        <select id="ro-print">
+          <option value="none" data-i18n="print_none">Not allowed</option>
+          <option value="low" data-i18n="print_low">Low resolution (150 dpi)</option>
+          <option value="high" selected data-i18n="print_high">High resolution</option>
+        </select></label>
+      <label class="field"><span data-i18n="changes">Changes allowed</span>
+        <select id="ro-changes">
+          <option value="none" selected data-i18n="changes_none">None</option>
+          <option value="forms" data-i18n="changes_forms">Comments and filling forms</option>
+          <option value="all" data-i18n="changes_all">Any except extracting pages</option>
+        </select></label>
+      <label class="field check"><input id="ro-copy" type="checkbox" checked>
+        <span data-i18n="allow_copy">Allow copying text and images</span></label>
+      <p id="ro-error" class="error" hidden></p>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button type="button" id="ro-cancel" class="btn" data-i18n="cancel">Cancel</button>
+        <button type="submit" class="btn primary" data-i18n="export">Export</button>
+      </div>
+    </form>
+  </div>
+
+  <div id="stamp-dialog" class="modal" hidden>
+    <form id="stamp-form" class="modal-box">
+      <h2 data-i18n="stamp_title">Header, footer and watermark</h2>
+      <p class="hint" data-i18n="stamp_hint">Use {page}, {total} and {name} in the text.</p>
+      <label class="field"><span data-i18n="stamp_text">Text</span>
+        <input id="st-text" type="text" maxlength="200" value="{page} / {total}" required></label>
+      <label class="field"><span data-i18n="stamp_where">Position</span>
+        <select id="st-where">
+          <option value="top-left" data-i18n="where_top_left">Top left</option>
+          <option value="top-center" data-i18n="where_top_center">Top centre</option>
+          <option value="top-right" data-i18n="where_top_right">Top right</option>
+          <option value="bottom-left" data-i18n="where_bottom_left">Bottom left</option>
+          <option value="bottom-center" selected data-i18n="where_bottom_center">Bottom centre</option>
+          <option value="bottom-right" data-i18n="where_bottom_right">Bottom right</option>
+          <option value="center" data-i18n="where_center">Centre (watermark)</option>
+        </select></label>
+      <label class="field"><span data-i18n="stamp_size">Size</span>
+        <input id="st-size" type="number" min="4" max="200" step="0.5" value="10"></label>
+      <label class="field"><span data-i18n="stamp_color">Colour</span>
+        <input id="st-color" type="color" value="#666666"></label>
+      <label class="field"><span data-i18n="stamp_opacity">Opacity (0.05 to 1)</span>
+        <input id="st-opacity" type="number" min="0.05" max="1" step="0.05" value="1"></label>
+      <label class="field"><span data-i18n="stamp_angle">Angle (degrees)</span>
+        <input id="st-angle" type="number" min="-90" max="90" step="1" value="0"></label>
+      <label class="field"><span data-i18n="stamp_pages">Pages</span>
+        <select id="st-pages">
+          <option value="all" selected data-i18n="stamp_pages_all">All pages</option>
+          <option value="current" data-i18n="stamp_pages_current">Current page</option>
+        </select></label>
+      <label class="field check"><input id="st-behind" type="checkbox">
+        <span data-i18n="stamp_behind">Behind page content (for watermarks)</span></label>
+      <p id="st-error" class="error" hidden></p>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button type="button" id="st-cancel" class="btn" data-i18n="cancel">Cancel</button>
+        <button type="submit" class="btn primary" data-i18n="stamp_apply">Apply</button>
+      </div>
+    </form>
+  </div>
+
+  <div id="toc-dialog" class="modal" hidden>
+    <div class="modal-box wide">
+      <h2 data-i18n="toc_title">Bookmarks</h2>
+      <p class="hint" data-i18n="toc_hint">Each bookmark jumps to a page. Level 2 sits under the level above it.</p>
+      <div id="toc-rows" class="rows"></div>
+      <p id="toc-error" class="error" hidden></p>
+      <div class="modal-actions">
+        <button type="button" id="toc-add" class="btn" data-i18n="toc_add">Add bookmark</button>
+        <span class="spacer"></span>
+        <button type="button" id="toc-cancel" class="btn" data-i18n="cancel">Cancel</button>
+        <button type="button" id="toc-save" class="btn primary" data-i18n="save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="annots-dialog" class="modal" hidden>
+    <div class="modal-box wide">
+      <h2 data-i18n="annots_title">Comments</h2>
+      <p class="hint" data-i18n="annots_hint">Edit the text of a comment or remove it. Changes can be undone.</p>
+      <div id="annots-rows" class="rows"></div>
+      <p id="annots-error" class="error" hidden></p>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button type="button" id="annots-close" class="btn" data-i18n="close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="password-dialog" class="modal" hidden>
+    <form id="password-form" class="modal-box">
+      <h2 data-i18n="password_title">Password required</h2>
+      <p id="pw-hint" class="hint"></p>
+      <label class="field"><span data-i18n="password_label">Password</span>
+        <input id="pw-input" type="password" autocomplete="current-password"></label>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button type="button" id="pw-cancel" class="btn" data-i18n="cancel">Cancel</button>
+        <button type="submit" class="btn primary" data-i18n="password_open">Open</button>
+      </div>
+    </form>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <div id="img-menu" class="ctx-menu" hidden>
+    <button type="button" data-img="top" data-i18n="image_front">Bring to front</button>
+    <button type="button" data-img="under" data-i18n="image_under_text">Send under text</button>
+    <button type="button" data-img="bottom" data-i18n="image_back">Send to back</button>
+    <div class="ctx-sep"></div>
+    <button type="button" data-img="delete" class="danger" data-i18n="image_delete">Delete picture</button>
+  </div>
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>
