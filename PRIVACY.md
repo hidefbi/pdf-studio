@@ -10,6 +10,7 @@ PDF Studio runs entirely on your computer. This page explains what the app keeps
 - **Exported files.** Files you export are sent to your browser as a download. The app does not keep a copy of them.
 - **Permissions.** The folders and files the app makes can be read only by your macOS user account.
 - **Locked PDFs.** If you open a PDF that has a password, PDF Studio keeps an unlocked working copy in the data folder. Your original file is not changed, and the password is not saved. To protect the disk itself, turn on FileVault. You can check it with `fdesetup status`.
+- **Page images.** The browser does not keep the page pictures the editor shows. They are fetched again each time, and the server keeps its own copy in memory until you delete the document or stop the app.
 
 Nothing in this list leaves your computer.
 

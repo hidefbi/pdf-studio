@@ -102,6 +102,27 @@ async def check_write_requests(request: Request, call_next):
     return await call_next(request)
 
 
+SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; "
+        "font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; "
+        "form-action 'self'; frame-ancestors 'none'"
+    ),
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+}
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    for name, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(name, value)
+    return response
+
+
 # ---------- storage helpers ----------
 
 def _doc_dir(doc_id: str) -> Path:
@@ -173,8 +194,8 @@ async def _save_upload(file: UploadFile, limit: int, too_large: str) -> Path:
 def _open_pdf_file(path: Path, password: str = "") -> tuple[fitz.Document, bool]:
     try:
         doc = fitz.open(path)
-    except Exception as exc:
-        raise HTTPException(400, f"not a readable PDF: {exc}")
+    except Exception:
+        raise HTTPException(400, "not a readable PDF")
     locked = bool(doc.needs_pass)
     if locked:
         if not password:
@@ -226,9 +247,14 @@ def _mutate(doc_id: str, action: Callable[[fitz.Document], Any]) -> Any:
         except HTTPException:
             snap.unlink(missing_ok=True)
             raise
-        except Exception as exc:
+        except ValueError as exc:
+            # Our own validation messages are safe to show.
             snap.unlink(missing_ok=True)
             raise HTTPException(400, str(exc))
+        except Exception:
+            # Anything else comes from the PDF engine, so keep its text out of the response.
+            snap.unlink(missing_ok=True)
+            raise HTTPException(400, "the change could not be applied")
         finally:
             doc.close()
         os.replace(tmp, path / "current.pdf")
@@ -1034,7 +1060,9 @@ def render_page(doc_id: str, index: int, zoom: float = Query(2.0, ge=0.2, le=MAX
         finally:
             doc.close()
         _render_put(key, data)
-    return Response(data, media_type="image/png", headers={"Cache-Control": "private, max-age=86400"})
+    # Page images can show private text, so the browser must not keep them.
+    # The server keeps its own render cache, which is cleared on delete.
+    return Response(data, media_type="image/png", headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/docs/{doc_id}/pages/{index}/text")
@@ -1217,8 +1245,8 @@ def ocr_page(doc_id: str, index: int):
         tmp.write(png)
         tmp.close()
         result, _ = engine(tmp.name)
-    except Exception as exc:
-        raise HTTPException(500, f"OCR failed: {exc}")
+    except Exception:
+        raise HTTPException(500, "text recognition failed")
     finally:
         os.unlink(tmp.name)
     lines = []
@@ -1720,8 +1748,8 @@ async def upload_font(file: UploadFile = File(...)):
         data = tmp.read_bytes()
         try:
             font = fitz.Font(fontbuffer=data)
-        except Exception as exc:
-            raise HTTPException(400, f"invalid font file: {exc}")
+        except Exception:
+            raise HTTPException(400, "invalid font file")
 
         font_id = uuid.uuid4().hex[:12]
         display = font.name or Path(filename).stem

@@ -128,7 +128,7 @@ def test_delete_document_removes_it(server):
 def test_page_images_follow_document_versions(server):
     doc = doc_id_of(server.base, fixture("embedded.pdf"))
     first, headers = get_bytes(server.base, f"/api/docs/{doc}/pages/0.png?zoom=2&v=0")
-    assert "max-age" in headers.get("Cache-Control", "")
+    assert headers.get("Cache-Control") == "no-store"
     assert get_bytes(server.base, f"/api/docs/{doc}/pages/0.png?zoom=2&v=0")[0] == first
     rotate(server.base, doc)
     edited, _ = get_bytes(server.base, f"/api/docs/{doc}/pages/0.png?zoom=2&v=1")

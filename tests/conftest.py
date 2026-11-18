@@ -70,6 +70,7 @@ def _browser_ui(server: Server, width: int, height: int):
         page = context.new_page()
         errors: list[str] = []
         page.on("pageerror", lambda exc: errors.append(str(exc)))
+        page.on("console", lambda msg: errors.append(msg.text) if "Content Security Policy" in msg.text else None)
         page.on("dialog", lambda dialog: dialog.accept())
         page.goto(server.base + "/")
         page.wait_for_selector("#empty:not([hidden])")
