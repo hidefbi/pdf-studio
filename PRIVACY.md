@@ -8,6 +8,7 @@ PDF Studio runs entirely on your computer. This page explains what the app keeps
 - **Undo history.** Earlier versions of each document are kept in the same folder, so undo still works after you close the tab. The app keeps the last 30 steps.
 - **Fonts you upload.** They are stored in `data/fonts`.
 - **Exported files.** Files you export are sent to your browser as a download. The app does not keep a copy of them.
+- **Permissions.** The folders and files the app makes can be read only by your macOS user account.
 
 Nothing in this list leaves your computer.
 

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import base64
-import io
 import json
 import os
 import re
@@ -19,12 +18,15 @@ from urllib.parse import quote
 
 import fitz  # PyMuPDF
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTask
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+# Folders and files made here are private to the user who runs the app.
+os.umask(0o077)
 DATA_DIR = Path(os.environ.get("PDF_STUDIO_DATA") or BASE_DIR / "data")
 DOCS_DIR = DATA_DIR / "docs"
 FONTS_DIR = DATA_DIR / "fonts"
@@ -36,6 +38,8 @@ HISTORY_LIMIT = 30
 UPLOAD_CHUNK = 1024 * 1024
 MAX_RENDER_SCALE = 4.0
 RENDER_CACHE_BYTES = 256 * 1024 * 1024
+MAX_PAGES = 2000
+MAX_PIXELS = 50_000_000  # one pixmap: a page render, a PNG export or an OCR pass
 LINES_CACHE_ITEMS = 64
 
 BUILTIN_FONTS = {
@@ -48,8 +52,19 @@ STANDARD_FONTS = {"helv", "hebo", "heit", "hebi", "tiro", "tibo", "tiit", "tibi"
 MARKUP_TYPES = {"highlight", "underline", "strikeout", "squiggly"}
 DOCX_MEDIA = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
+def _tighten_permissions(root: Path) -> None:
+    # Files from older versions kept the default mode (usually 0644). Fix them once at start.
+    for dirpath, dirnames, filenames in os.walk(root):
+        for name in dirnames + filenames:
+            item = os.path.join(dirpath, name)
+            if not os.path.islink(item):
+                os.chmod(item, 0o700 if os.path.isdir(item) else 0o600)
+
+
 DOCS_DIR.mkdir(parents=True, exist_ok=True)
 FONTS_DIR.mkdir(parents=True, exist_ok=True)
+_tighten_permissions(DOCS_DIR)
+_tighten_permissions(FONTS_DIR)
 _lock = threading.RLock()
 _cache_lock = threading.Lock()
 _render_cache: OrderedDict = OrderedDict()
@@ -164,12 +179,29 @@ def _open_pdf_file(path: Path, password: str = "") -> tuple[fitz.Document, bool]
     if doc.page_count == 0:
         doc.close()
         raise HTTPException(400, "PDF has no pages")
+    if doc.page_count > MAX_PAGES:
+        doc.close()
+        raise HTTPException(413, f"PDF has more than {MAX_PAGES} pages")
     return doc, locked
 
 
 def _check_index(doc: fitz.Document, index: int) -> None:
     if not 0 <= index < doc.page_count:
         raise HTTPException(404, "page not found")
+
+
+def _check_pixels(page: fitz.Page, scale: float) -> None:
+    rect = page.rect
+    if rect.width * rect.height * scale * scale > MAX_PIXELS:
+        raise HTTPException(413, "page is too large at this zoom")
+
+
+def _ocr_scale(page: fitz.Page) -> float:
+    rect = page.rect
+    scale = min(OCR_SCALE, (MAX_PIXELS / max(rect.width * rect.height, 1.0)) ** 0.5)
+    if scale < 1.0:
+        raise HTTPException(413, "page is too large for OCR")
+    return scale
 
 
 def _mutate(doc_id: str, action: Callable[[fitz.Document], Any]) -> Any:
@@ -989,6 +1021,7 @@ def render_page(doc_id: str, index: int, zoom: float = Query(2.0, ge=0.2, le=MAX
         doc = fitz.open(path / "current.pdf")
         try:
             _check_index(doc, index)
+            _check_pixels(doc[index], zoom)
             data = doc[index].get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False).tobytes("png")
         finally:
             doc.close()
@@ -1120,9 +1153,9 @@ def _gray_from_pixmap(pix):
     return arr[:, :, :3].mean(axis=2)
 
 
-def _ocr_is_bold(gray, x0, y0, x1, y1, size):
+def _ocr_is_bold(gray, x0, y0, x1, y1, size, scale):
     import numpy as np
-    crop = gray[int(y0 * OCR_SCALE):int(y1 * OCR_SCALE), int(x0 * OCR_SCALE):int(x1 * OCR_SCALE)]
+    crop = gray[int(y0 * scale):int(y1 * scale), int(x0 * scale):int(x1 * scale)]
     if crop.size == 0:
         return False
     ink = crop < (np.median(crop) - 70)
@@ -1139,7 +1172,7 @@ def _ocr_is_bold(gray, x0, y0, x1, y1, size):
             runs.append(count)
     if not runs:
         return False
-    ratio = float(np.median(runs)) / (size * OCR_SCALE)
+    ratio = float(np.median(runs)) / (size * scale)
     return ratio > OCR_BOLD_RATIO
 OCR_MIN_SCORE = 0.5
 _ocr_engine = None
@@ -1164,7 +1197,8 @@ def ocr_page(doc_id: str, index: int):
     try:
         _check_index(doc, index)
         page = doc[index]
-        pix = page.get_pixmap(matrix=fitz.Matrix(OCR_SCALE, OCR_SCALE), alpha=False)
+        scale = _ocr_scale(page)
+        pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
         png = pix.tobytes("png")
         gray = _gray_from_pixmap(pix)
     finally:
@@ -1185,8 +1219,8 @@ def ocr_page(doc_id: str, index: int):
         # Low confidence is usually noise from icons or texture.
         if not text or float(score) < OCR_MIN_SCORE:
             continue
-        xs = [pt[0] / OCR_SCALE for pt in box]
-        ys = [pt[1] / OCR_SCALE for pt in box]
+        xs = [pt[0] / scale for pt in box]
+        ys = [pt[1] / scale for pt in box]
         x0, y0, x1, y1 = min(xs), min(ys), max(xs), max(ys)
         height_size = (y1 - y0) / 0.93
         if re.search(rf"[{CJK}]", text):
@@ -1196,7 +1230,7 @@ def ocr_page(doc_id: str, index: int):
             width_size = (x1 - x0) / unit if unit > 0 else height_size
             size = width_size if abs(width_size - height_size) <= 0.3 * height_size else height_size
         size = max(4.0, min(144.0, round(size, 1)))
-        bold = False if re.search(rf"[{CJK}]", text) else _ocr_is_bold(gray, x0, y0, x1, y1, size)
+        bold = False if re.search(rf"[{CJK}]", text) else _ocr_is_bold(gray, x0, y0, x1, y1, size, scale)
         lines.append({
             "bold": bold,
             "text": text,
@@ -1335,6 +1369,8 @@ def merge(body: MergeRequest):
             src = fitz.open(_doc_dir(doc_id) / "current.pdf")
             try:
                 out.insert_pdf(src)
+                if out.page_count > MAX_PAGES:
+                    raise HTTPException(413, f"merged PDF would have more than {MAX_PAGES} pages")
             finally:
                 src.close()
         data = out.tobytes(garbage=3, deflate=True)
@@ -1381,15 +1417,29 @@ def export(doc_id: str, fmt: str,
             return _download(text.encode("utf-8"), "text/plain; charset=utf-8", f"{stem}.txt")
         if fmt == "png":
             _check_index(doc, page)
+            _check_pixels(doc[page], zoom)
             data = doc[page].get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False).tobytes("png")
             return _download(data, "image/png", f"{stem}-p{page + 1}.png")
         if fmt == "images":
-            buf = io.BytesIO()
-            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-                for i, p in enumerate(doc):
-                    png = p.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False).tobytes("png")
-                    zf.writestr(f"{stem}-{i + 1:03d}.png", png)
-            return _download(buf.getvalue(), "application/zip", f"{stem}-images.zip")
+            # Write the zip to disk, so a long document does not fill memory.
+            filename = f"{stem}-images.zip"
+            fd, name = tempfile.mkstemp(dir=DATA_DIR, suffix=".zip")
+            os.close(fd)
+            try:
+                with zipfile.ZipFile(name, "w", zipfile.ZIP_DEFLATED) as zf:
+                    for i, p in enumerate(doc):
+                        _check_pixels(p, zoom)
+                        png = p.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False).tobytes("png")
+                        zf.writestr(f"{stem}-{i + 1:03d}.png", png)
+            except BaseException:
+                os.unlink(name)
+                raise
+            return FileResponse(
+                name,
+                media_type="application/zip",
+                headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+                background=BackgroundTask(os.unlink, name),
+            )
     finally:
         doc.close()
     raise HTTPException(400, "unknown export format")
@@ -1481,6 +1531,8 @@ class AnnotPatch(BaseModel):
 
 
 def _insert_blank(doc: fitz.Document, after: int) -> int:
+    if doc.page_count >= MAX_PAGES:
+        raise HTTPException(413, f"document already has {MAX_PAGES} pages")
     ref_index = max(after, 0)
     _check_index(doc, ref_index)
     ref = doc[ref_index]

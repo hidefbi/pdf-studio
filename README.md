@@ -125,6 +125,7 @@ Then run the tests.
 - With OCR installed, both `opencv-python` and `opencv-python-headless` end up in the environment. They are the same version and work together, but it is untidy.
 - Python 3.9 gets PyMuPDF 1.26.5 instead of 2.1, which only supports 3.11 and newer. The tests pass with both. Most test runs were on Python 3.13.
 - Large files take longer to render. Pages are cached, so scrolling gets faster after the first view.
+- A document can have up to 2000 pages. A single page can be drawn at about 50 million pixels at most, so a very large page needs a lower zoom for rendering, PNG export and OCR.
 
 ## Project layout
 
