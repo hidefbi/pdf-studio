@@ -18,8 +18,8 @@ from typing import Any, Callable, Optional
 from urllib.parse import quote
 
 import fitz  # PyMuPDF
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import Response
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
@@ -59,6 +59,25 @@ _lines_cache: OrderedDict = OrderedDict()
 app = FastAPI(title="PDF Studio")
 # Blocks DNS rebinding: a page on another domain cannot reach the server through the browser.
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"])
+
+LOCAL_ORIGINS = ("http://127.0.0.1", "http://localhost")
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
+def _is_local_origin(origin: str) -> bool:
+    return any(origin == base or origin.startswith(base + ":") for base in LOCAL_ORIGINS)
+
+
+@app.middleware("http")
+async def check_write_requests(request: Request, call_next):
+    # Our pages always send the X-PDF-Studio header on writes. A page on another site
+    # cannot add it without a CORS preflight, and this app never allows one.
+    # The Origin check is a second guard for the same thing.
+    if request.method not in SAFE_METHODS:
+        origin = request.headers.get("origin")
+        if request.headers.get("x-pdf-studio") != "1" or (origin is not None and not _is_local_origin(origin)):
+            return JSONResponse({"detail": "forbidden"}, status_code=403)
+    return await call_next(request)
 
 
 # ---------- storage helpers ----------
@@ -1689,12 +1708,6 @@ class ClientMessage(BaseModel):
     id: str = Field(min_length=1, max_length=64)
 
 
-def _require_marker(request: Request) -> None:
-    # Only this app's pages send the header, so other sites cannot call these routes.
-    if request.headers.get("x-pdf-studio") != "1":
-        raise HTTPException(403, "forbidden")
-
-
 def _exit_soon() -> None:
     threading.Timer(0.3, lambda: os._exit(0)).start()
 
@@ -1712,7 +1725,7 @@ def _watchdog() -> None:
                 os._exit(0)
 
 
-@app.post("/api/heartbeat", dependencies=[Depends(_require_marker)])
+@app.post("/api/heartbeat")
 def heartbeat(body: ClientMessage):
     global _ever_connected
     with _clients_lock:
@@ -1721,7 +1734,7 @@ def heartbeat(body: ClientMessage):
     return {"ok": True}
 
 
-@app.post("/api/leave", dependencies=[Depends(_require_marker)])
+@app.post("/api/leave")
 def leave(body: ClientMessage):
     with _clients_lock:
         if body.id in _clients:
@@ -1729,7 +1742,7 @@ def leave(body: ClientMessage):
     return {"ok": True}
 
 
-@app.post("/api/shutdown", dependencies=[Depends(_require_marker)])
+@app.post("/api/shutdown")
 def shutdown():
     _exit_soon()
     return {"ok": True}

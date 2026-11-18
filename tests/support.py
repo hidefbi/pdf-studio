@@ -19,7 +19,8 @@ def fixture(name: str) -> Path:
 def call(base: str, method: str, path: str, body=None, headers=None):
     """Returns (status, parsed JSON or None). Error bodies are parsed too."""
     data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(base + path, data=data, method=method, headers=headers or {})
+    req = urllib.request.Request(base + path, data=data, method=method,
+                                 headers={"X-PDF-Studio": "1", **(headers or {})})
     if data is not None:
         req.add_header("Content-Type", "application/json")
     try:
@@ -55,6 +56,7 @@ def upload(base: str, path: Path, password: str | None = None, filename: str = "
     parts.append(f"--{boundary}--\r\n".encode())
     req = urllib.request.Request(base + "/api/docs", data=b"".join(parts), method="POST")
     req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+    req.add_header("X-PDF-Studio", "1")
     try:
         with urllib.request.urlopen(req) as res:
             return res.status, json.loads(res.read())

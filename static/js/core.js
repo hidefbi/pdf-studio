@@ -42,7 +42,9 @@ export const state = {
 // ---------- helpers ----------
 
 export async function api(path, options = {}) {
-  const res = await fetch(path, options);
+  // Every call from this app carries the header, so the server accepts writes.
+  const headers = { ...(options.headers || {}), "X-PDF-Studio": "1" };
+  const res = await fetch(path, { ...options, headers });
   if (!res.ok) {
     let message = res.statusText;
     try {

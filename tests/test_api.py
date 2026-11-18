@@ -33,7 +33,8 @@ def get_bytes(base, path):
 
 def curl_upload(base, path, field="file", url_path="/api/docs"):
     out = subprocess.run(
-        ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "-F", f"{field}=@{path}", base + url_path],
+        ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "-H", "X-PDF-Studio: 1",
+         "-F", f"{field}=@{path}", base + url_path],
         capture_output=True, text=True, check=True,
     )
     return int(out.stdout)
@@ -151,7 +152,7 @@ def test_render_cache_respects_its_byte_cap(tmp_path):
         "from fastapi.testclient import TestClient\n"
         "import app.main as m\n"
         "m.RENDER_CACHE_BYTES = 300_000\n"
-        "c = TestClient(m.app, base_url='http://127.0.0.1')\n"
+        "c = TestClient(m.app, base_url='http://127.0.0.1', headers={'X-PDF-Studio': '1'})\n"
         "doc = c.post('/api/docs', files={'file': ('m.pdf', open(sys.argv[1], 'rb'), 'application/pdf')}).json()['id']\n"
         "c.post(f'/api/docs/{doc}/pages/blank', json={'after': 0})\n"
         "c.post(f'/api/docs/{doc}/pages/blank', json={'after': 0})\n"

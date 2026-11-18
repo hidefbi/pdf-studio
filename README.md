@@ -100,6 +100,10 @@ The tests use pytest for the API and Playwright with Chromium for the browser te
 
 The browser tests start their own copy of the server, so you can run them while the app is open.
 
+## Security
+
+The server only listens on your computer, but a web page you visit in another tab could still try to send it requests. To block that, every change request (upload, edit, delete, export) must carry a custom header that only PDF Studio's own pages send, and its `Origin` must be `127.0.0.1` or `localhost`. Other sites get a 403. Reading pages and files is not affected.
+
 ## Updating packages
 
 Only when you change something in a `.in` file.
