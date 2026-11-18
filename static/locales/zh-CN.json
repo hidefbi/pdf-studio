@@ -162,6 +162,7 @@
   "password_title": "需要密码",
   "password_needed": "此 PDF 受保护，请输入打开密码。",
   "password_wrong": "密码错误，请重试。",
+  "unlocked_copy_notice": "此 PDF 原本受密码保护。PDF Studio 会在本机保存一份未加密的工作副本，原文件不会被修改。",
   "password_cancelled": "已取消打开。",
   "password_label": "密码",
   "password_open": "打开",

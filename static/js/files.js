@@ -1,4 +1,4 @@
-import { $, api, showError, t } from "./core.js";
+import { $, api, showError, t, toast } from "./core.js";
 
 // ---------- page actions ----------
 
@@ -21,7 +21,9 @@ export async function uploadPdf(file) {
     form.append("file", file);
     form.append("password", password);
     try {
-      return (await api("/api/docs", { method: "POST", body: form })).json();
+      const body = await (await api("/api/docs", { method: "POST", body: form })).json();
+      if (body.unlocked) toast(t("unlocked_copy_notice"));
+      return body;
     } catch (err) {
       if (err.status !== 401) throw err;
       const hint = err.message === "wrong password" ? t("password_wrong") : t("password_needed");

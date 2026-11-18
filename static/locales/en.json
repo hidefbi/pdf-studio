@@ -162,6 +162,7 @@
   "password_title": "Password required",
   "password_needed": "This PDF is protected. Enter its open password.",
   "password_wrong": "Wrong password. Try again.",
+  "unlocked_copy_notice": "This PDF was protected. PDF Studio keeps an unlocked working copy on this computer. Your original file is not changed.",
   "password_cancelled": "Opening cancelled.",
   "password_label": "Password",
   "password_open": "Open",

@@ -92,3 +92,32 @@ def test_normal_page_renders_at_top_zoom(server):
     assert call(server.base, "GET", f"/api/docs/{doc}/pages/0.png?zoom=4")[0] == 200
     status, body = call(server.base, "GET", f"/api/docs/{doc}/export/images")
     assert status == 200 and body[:2] == b"PK"
+
+
+def test_upload_reports_unlocked_copy(server, tmp_path):
+    locked = tmp_path / "locked.pdf"
+    doc = pymupdf.open()
+    doc.new_page().insert_text((72, 100), "LOCKED BODY")
+    doc.save(locked, encryption=pymupdf.PDF_ENCRYPT_AES_256, owner_pw="own-test-1", user_pw="pw-test-1")
+    doc.close()
+    status, body = upload(server.base, locked, password="pw-test-1")
+    assert status == 200 and body["unlocked"] is True
+    status, body = upload(server.base, fixture("align.pdf"))
+    assert status == 200 and body["unlocked"] is False
+
+
+def test_leftovers_are_removed_on_start(tmp_path):
+    leftover = tmp_path / "pdfstudio-old.upload.plain"
+    leftover.write_bytes(b"x")
+    stale = tmp_path / "docs" / "old" / "current.tmp"
+    stale.parent.mkdir(parents=True)
+    stale.write_bytes(b"x")
+    users_file = tmp_path / "other.zip"
+    users_file.write_bytes(b"keep")
+    env = dict(os.environ, PDF_STUDIO_DATA=str(tmp_path), PDF_STUDIO_NO_WATCHDOG="1")
+    result = subprocess.run([sys.executable, "-c", "import app.main"],
+                            cwd=ROOT, env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr[-2000:]
+    assert not leftover.exists()
+    assert not stale.exists()
+    assert users_file.read_bytes() == b"keep"

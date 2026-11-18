@@ -61,8 +61,19 @@ def _tighten_permissions(root: Path) -> None:
                 os.chmod(item, 0o700 if os.path.isdir(item) else 0o600)
 
 
+def _remove_leftovers() -> None:
+    # A crash can leave unlocked copies or half-saved files behind.
+    # Our temp files all start with pdfstudio-, so other files in the folder are left alone.
+    for item in DATA_DIR.glob("pdfstudio-*"):
+        if item.is_file():
+            item.unlink(missing_ok=True)
+    for item in DOCS_DIR.glob("*/current.tmp"):
+        item.unlink(missing_ok=True)
+
+
 DOCS_DIR.mkdir(parents=True, exist_ok=True)
 FONTS_DIR.mkdir(parents=True, exist_ok=True)
+_remove_leftovers()
 _tighten_permissions(DOCS_DIR)
 _tighten_permissions(FONTS_DIR)
 _lock = threading.RLock()
@@ -75,22 +86,18 @@ app = FastAPI(title="PDF Studio")
 # Blocks DNS rebinding: a page on another domain cannot reach the server through the browser.
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"])
 
-LOCAL_ORIGINS = ("http://127.0.0.1", "http://localhost")
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
-
-
-def _is_local_origin(origin: str) -> bool:
-    return any(origin == base or origin.startswith(base + ":") for base in LOCAL_ORIGINS)
 
 
 @app.middleware("http")
 async def check_write_requests(request: Request, call_next):
     # Our pages always send the X-PDF-Studio header on writes. A page on another site
     # cannot add it without a CORS preflight, and this app never allows one.
-    # The Origin check is a second guard for the same thing.
+    # Origin must be the address the page was opened on: same host and same port as Host.
     if request.method not in SAFE_METHODS:
         origin = request.headers.get("origin")
-        if request.headers.get("x-pdf-studio") != "1" or (origin is not None and not _is_local_origin(origin)):
+        host = request.headers.get("host", "")
+        if request.headers.get("x-pdf-studio") != "1" or (origin is not None and origin != f"http://{host}"):
             return JSONResponse({"detail": "forbidden"}, status_code=403)
     return await call_next(request)
 
@@ -147,7 +154,7 @@ def _create_doc_from_file(src: Path, name: str) -> str:
 
 async def _save_upload(file: UploadFile, limit: int, too_large: str) -> Path:
     """Stream an upload to a temp file, so memory use stays flat whatever the size."""
-    fd, name = tempfile.mkstemp(dir=DATA_DIR, suffix=".upload")
+    fd, name = tempfile.mkstemp(prefix="pdfstudio-", dir=DATA_DIR, suffix=".upload")
     tmp = Path(name)
     total = 0
     try:
@@ -941,7 +948,8 @@ async def upload_doc(file: UploadFile = File(...), password: str = Form("")):
                 source = plain
         finally:
             doc.close()
-        return {"id": _create_doc_from_file(source, file.filename or "document.pdf")}
+        doc_id = _create_doc_from_file(source, file.filename or "document.pdf")
+        return {"id": doc_id, "unlocked": locked}
     finally:
         tmp.unlink(missing_ok=True)
         if plain is not None:
@@ -1423,7 +1431,7 @@ def export(doc_id: str, fmt: str,
         if fmt == "images":
             # Write the zip to disk, so a long document does not fill memory.
             filename = f"{stem}-images.zip"
-            fd, name = tempfile.mkstemp(dir=DATA_DIR, suffix=".zip")
+            fd, name = tempfile.mkstemp(prefix="pdfstudio-", dir=DATA_DIR, suffix=".zip")
             os.close(fd)
             try:
                 with zipfile.ZipFile(name, "w", zipfile.ZIP_DEFLATED) as zf:

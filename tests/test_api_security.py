@@ -70,10 +70,21 @@ def test_lookalike_origin_is_refused(server):
     assert status_of(server.base, "POST", "/api/heartbeat", {"id": "x"}, headers=headers) == 403
 
 
-def test_local_origin_with_header_is_allowed(server):
-    for origin in ("http://127.0.0.1:8000", "http://localhost", "http://localhost:5173"):
+def test_own_origin_with_header_is_allowed(server):
+    headers = {"X-PDF-Studio": "1", "Origin": server.base}
+    assert status_of(server.base, "POST", "/api/heartbeat", {"id": "x"}, headers=headers) == 200
+
+
+def test_other_port_or_host_name_is_refused(server):
+    port = server.base.rsplit(":", 1)[1]
+    for origin in (f"http://localhost:{port}", "http://127.0.0.1:1", "http://localhost:5173"):
         headers = {"X-PDF-Studio": "1", "Origin": origin}
-        assert status_of(server.base, "POST", "/api/heartbeat", {"id": "x"}, headers=headers) == 200
+        assert status_of(server.base, "POST", "/api/heartbeat", {"id": "x"}, headers=headers) == 403, origin
+
+
+def test_evil_host_with_matching_origin_is_still_refused(server):
+    headers = {"X-PDF-Studio": "1", "Origin": "http://evil.example", "Host": "evil.example"}
+    assert status_of(server.base, "POST", "/api/heartbeat", {"id": "x"}, headers=headers) == 400
 
 
 def test_app_calls_with_header_work(server):
