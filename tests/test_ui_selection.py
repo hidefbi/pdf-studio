@@ -299,3 +299,34 @@ def test_copy_works_from_the_add_text_tool(ui, server):
     page.wait_for_timeout(200)
     copied = page.evaluate("() => window.pdfStudio.state.clipboard && window.pdfStudio.state.clipboard.items.length")
     assert copied == 1
+
+
+def test_paste_from_outside_adds_new_text(ui, server):
+    page = ui.page
+    doc = open_file(page, fixture("multi.pdf"))
+    page.evaluate("""() => {
+      const dt = new DataTransfer();
+      dt.setData('text/plain', 'Pasted from outside');
+      document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true }));
+    }""")
+    page.wait_for_timeout(800)
+    texts = [ln["text"] for ln in lines_of(server.base, doc)]
+    assert any("Pasted from outside" in text for text in texts)
+
+
+def test_paste_of_our_own_copy_keeps_the_lines(ui, server):
+    page = ui.page
+    doc = open_file(page, fixture("multi.pdf"))
+    before = len(lines_of(server.base, doc))
+    page.locator(".tl-box").nth(2).click()
+    page.wait_for_timeout(300)
+    page.keyboard.press("Control+c")
+    page.wait_for_timeout(200)
+    page.evaluate("""() => {
+      const text = window.pdfStudio.state.clipboard.text;
+      const dt = new DataTransfer();
+      dt.setData('text/plain', text);
+      document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true }));
+    }""")
+    page.wait_for_timeout(800)
+    assert len(lines_of(server.base, doc)) == before + 1

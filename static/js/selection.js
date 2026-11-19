@@ -5,7 +5,7 @@ import { applyOps } from "./tools.js";
 import { runAction } from "./files.js";
 import { fontKey, isCustomFont, openLineEditor, placeBox } from "./editor.js";
 import { bindImageBox, bindPictureMenu, ensureImages, hideImageMenu, isImageSelected, pictureAction, pictureUnderPoint, restoreImageSelection, selectImage, showImageMenu, syncImageHandles } from "./images.js";
-import { copySelection, pasteClipboard } from "./clipboard.js";
+import { copySelection, onPasteEvent } from "./clipboard.js";
 
 export async function ensureLines() {
   const key = `${state.docId}:${state.page}:${state.info.version}`;
@@ -377,6 +377,7 @@ export function bindStyleBar() {
     else setSizeInput(state.selected.size);
   });
   bindPictureMenu();
+  document.addEventListener("paste", onPasteEvent);
   document.addEventListener("pointermove", (e) => { state.pointer = [e.clientX, e.clientY]; });
   document.addEventListener("keydown", (e) => {
     const typing = e.target && (e.target.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName));
@@ -407,19 +408,12 @@ export function bindStyleBar() {
         if (lines.length) setSelection(lines.slice(), lines[0]);
       }).catch(showError);
     }
+    // Copy and cut need a selection. Paste comes in as a paste event, see onPasteEvent.
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !state.editor && !editable && state.info) {
       const key = e.key.toLowerCase();
-      // Copy works from any tool. Cut and paste stay with the select and replace tools.
-      const textTool = state.tool === "select" || state.tool === "replace";
-      if (key === "c" && selectedItems().length) {
+      if ((key === "c" || key === "x") && selectedItems().length) {
         e.preventDefault();
-        copySelection(false);
-      } else if (textTool && key === "x" && selectedItems().length) {
-        e.preventDefault();
-        copySelection(true);
-      } else if (textTool && key === "v" && state.clipboard) {
-        e.preventDefault();
-        runAction(pasteClipboard);
+        copySelection(key === "x");
       }
     }
   });
