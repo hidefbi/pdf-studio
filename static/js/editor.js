@@ -224,25 +224,6 @@ function buildSpacingPanel({ kerning, leading, size }, onChange) {
   return { panel, kerningInput: kern.input, leadingInput: lead.input };
 }
 
-// The spacing row goes under the line when there is room, else above it,
-// on whichever side has the bigger gap to the next line.
-function placeTools(tools, bbox, s) {
-  const lines = (state.lineCache && state.lineCache.lines) || [];
-  const page = state.info.pages[state.page];
-  const height = (tools.offsetHeight + 4) * s; // in points
-  const gap = (below) => {
-    let limit = below ? page.height : 0;
-    lines.forEach((ln) => {
-      if (ln.bbox[2] <= bbox[0] || ln.bbox[0] >= bbox[2]) return;
-      if (below && ln.bbox[1] >= bbox[3] - 0.5) limit = Math.min(limit, ln.bbox[1]);
-      if (!below && ln.bbox[3] <= bbox[1] + 0.5) limit = Math.max(limit, ln.bbox[3]);
-    });
-    return below ? limit - bbox[3] : bbox[1] - limit;
-  };
-  const below = gap(true) >= height || gap(true) >= gap(false);
-  tools.style.top = below ? `${bbox[3] / s + 4}px` : `${bbox[1] / s - tools.offsetHeight - 4}px`;
-}
-
 export function startEditor({ bbox, text, size, color, bold, bg, kerning = 0, leading = null, onCommit }) {
   if (state.editor && state.editor.__finish) state.editor.__finish(true);
   const s = scaleFactor();
@@ -263,7 +244,10 @@ export function startEditor({ bbox, text, size, color, bold, bg, kerning = 0, le
   ed.textContent = text;
 
   const { panel: spacingPanel, kerningInput, leadingInput } =
-    buildSpacingPanel({ kerning, leading, size }, () => applyPreview());
+    buildSpacingPanel({ kerning, leading, size }, () => {
+      applyPreview();
+      placeTools();
+    });
   const readSettings = () => {
     const k = readNumber(kerningInput, 0);
     const l = readNumber(leadingInput, null);
@@ -283,12 +267,12 @@ export function startEditor({ bbox, text, size, color, bold, bg, kerning = 0, le
   // mousedown is prevented, so these buttons do not blur the state.editor. The inputs keep focus.
   const tools = document.createElement("div");
   tools.className = "tl-tools";
-  tools.style.left = `${bbox[0] / s}px`;
   const okBtn = document.createElement("button");
   okBtn.className = "ok";
   okBtn.textContent = "✓";
   okBtn.title = t("editor_save");
   const cancelBtn = document.createElement("button");
+  cancelBtn.className = "cancel";
   cancelBtn.textContent = "✕";
   cancelBtn.title = t("editor_cancel");
   tools.append(spacingPanel, okBtn, cancelBtn);
@@ -296,7 +280,13 @@ export function startEditor({ bbox, text, size, color, bold, bg, kerning = 0, le
     if (!e.target.closest("input")) e.preventDefault();
   });
   $("#stage").append(ed, tools);
-  placeTools(tools, bbox, s);
+  // The row sits under the box's bottom edge and follows it as the text grows.
+  function placeTools() {
+    tools.style.left = `${ed.offsetLeft}px`;
+    tools.style.top = `${ed.offsetTop + ed.offsetHeight + 4}px`;
+  }
+  placeTools();
+  ed.addEventListener("input", placeTools);
   state.editor = ed;
 
   let done = false;

@@ -191,3 +191,21 @@ def test_spacing_steppers_set_kerning_and_leading_in_browser(ui, server):
     assert abs((tops["Line2"] - tops["Line1"]) - 30) < 0.5, (tops["Line1"], tops["Line2"])
     assert ui.page.locator(".tl-edit").count() == 0
     assert not ui.errors
+
+
+def test_spacing_row_follows_the_editor_bottom(ui, server):
+    page = ui.page
+    open_file(page, fixture("multi.pdf"))
+    page.locator(".tl-box[title*='Billing']").first.dblclick()
+    page.wait_for_timeout(300)
+    for _ in range(3):
+        page.keyboard.press("Shift+Enter")
+    page.keyboard.type("more text")
+    page.wait_for_timeout(200)
+    ed = page.locator(".tl-edit").bounding_box()
+    tools = page.locator(".tl-tools").bounding_box()
+    assert abs(tools["y"] - (ed["y"] + ed["height"] + 4)) < 3
+    cancel_bg = page.locator(".tl-tools .cancel").evaluate("el => getComputedStyle(el).backgroundColor")
+    assert cancel_bg == "rgb(198, 40, 40)"
+    step_bg = page.locator(".tl-step-btn").first.evaluate("el => getComputedStyle(el).backgroundColor")
+    assert step_bg != "rgba(0, 0, 0, 0)"

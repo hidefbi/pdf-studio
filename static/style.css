@@ -182,7 +182,8 @@ input[type="color"] { width: 36px; height: 30px; border: 1px solid var(--line); 
 .tl-spacing { display: flex; gap: 8px; align-items: center; padding: 3px 6px; background: #fff; border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
 .tl-step { display: flex; align-items: center; gap: 2px; }
 .tl-step-icon { display: inline-flex; color: #374151; }
-.tl-step-btn { width: 22px; height: 22px; padding: 0; font-size: 15px; font-weight: 600; line-height: 20px; border-radius: 4px; color: #1d2129; }
+.tl-step-btn { width: 22px; height: 22px; padding: 0; font-size: 15px; font-weight: 600; line-height: 20px; border-radius: 4px; color: #1d2129; background: rgba(10,102,194,.15); border-color: rgba(10,102,194,.35); }
+.tl-tools .cancel { background: var(--danger); color: #fff; border-color: var(--danger); }
 .tl-step input { width: 60px; font: inherit; font-size: 12px; padding: 2px 4px; border: 1px solid var(--line); border-radius: 4px; min-width: 0; }
 
 .style-bar { position: absolute; z-index: 20; display: flex; gap: 2px; padding: 4px; background: #1d2129; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.25); }
