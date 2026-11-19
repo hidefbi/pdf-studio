@@ -110,6 +110,7 @@
   "style_align_center": "Align centre (to paragraph)",
   "style_align_right": "Align right (to paragraph)",
   "selected_lines": "{n} lines selected",
+  "size_mixed": "mixed",
   "image_front": "Bring to front",
   "image_under_text": "Send under text",
   "image_back": "Send to back",

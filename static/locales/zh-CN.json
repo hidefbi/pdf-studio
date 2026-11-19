@@ -110,6 +110,7 @@
   "style_align_center": "居中对齐（按段落）",
   "style_align_right": "右对齐（按段落）",
   "selected_lines": "已选 {n} 行",
+  "size_mixed": "混合",
   "image_front": "置于顶层",
   "image_under_text": "置于文字下层",
   "image_back": "置于最底层",

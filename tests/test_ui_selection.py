@@ -230,3 +230,45 @@ def test_single_line_alignment_is_disabled_and_selection_highlight_is_accurate(u
     page.keyboard.press("Escape")
     page.wait_for_timeout(300)
     assert not ui.errors
+
+
+def test_style_bar_size_steps_from_the_shown_size(ui, server):
+    page = ui.page
+    doc = open_file(page, fixture("multi.pdf"))
+    bar = page.locator("#style-bar")
+    page.locator(".tl-box").nth(2).click()
+    page.locator(".tl-box").nth(4).click(modifiers=["Shift"])
+    page.wait_for_timeout(400)
+    shown = bar.locator(".style-size")
+    base = int(shown.inner_text())
+    bar.locator("[data-act='larger']").click()
+    page.wait_for_timeout(800)
+    assert int(shown.inner_text()) == base + 1
+    assert page.locator("#size").input_value() == str(base + 1)
+    sizes = {round(ln["size"]) for ln in lines_of(server.base, doc)[2:5]}
+    assert sizes == {base + 1}, sizes
+    bar.locator("[data-act='smaller']").click()
+    page.wait_for_timeout(800)
+    assert int(shown.inner_text()) == base
+    assert not ui.errors
+
+
+def test_selected_text_is_tinted_without_a_frame(ui, server):
+    page = ui.page
+    open_file(page, fixture("multi.pdf"))
+    boxes = page.locator(".tl-box")
+    boxes.nth(2).click()
+    page.wait_for_timeout(300)
+    boxes.nth(5).click(modifiers=["Shift"])
+    page.wait_for_timeout(300)
+    selected = page.locator(".tl-box.selected")
+    assert selected.count() == 4
+    for i in range(selected.count()):
+        width, color = selected.nth(i).evaluate(
+            "el => [getComputedStyle(el).borderTopWidth, getComputedStyle(el).backgroundColor]")
+        assert width == "0px"
+        assert color != "rgba(0, 0, 0, 0)"
+    boxes.nth(0).hover()
+    page.wait_for_timeout(200)
+    hovered = boxes.nth(0).evaluate("el => getComputedStyle(el).borderTopWidth")
+    assert hovered == "0px"

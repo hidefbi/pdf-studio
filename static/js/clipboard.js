@@ -19,7 +19,7 @@ export function copySelection(cut) {
   };
   if (!cut) return;
   clearSelection();
-  runAction(() => applyOps(items.map((ln) => ({ type: "erase_text", page: state.page, rect: ln.bbox }))));
+  runAction(() => applyOps(items.map((ln) => ({ type: "erase_text", page: state.page, rect: ln.bbox, origin: ln.origin }))));
 }
 
 export function pointerInPage() {

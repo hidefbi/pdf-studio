@@ -139,10 +139,10 @@ input[type="color"] { width: 36px; height: 30px; border: 1px solid var(--line); 
 
 #textlayer { position: absolute; top: 0; left: 0; pointer-events: none; }
 #textlayer.active { pointer-events: auto; }
-.tl-box { position: absolute; box-sizing: border-box; cursor: text; border: 1px solid transparent; }
-.tl-box:hover { border-color: rgba(10,102,194,.8); }
-.tl-box.selected { border: 2px solid var(--accent); }
-.tl-ghost { position: absolute; z-index: 4; box-sizing: border-box; border: 2px dashed var(--accent); background: rgba(10,102,194,.10); pointer-events: none; }
+.tl-box { position: absolute; box-sizing: border-box; cursor: text; }
+/* Selected text is a tint, no frame. */
+.tl-box.selected { background: rgba(10,102,194,.30); mix-blend-mode: multiply; }
+.tl-ghost { position: absolute; z-index: 4; box-sizing: border-box; background: rgba(10,102,194,.30); mix-blend-mode: multiply; pointer-events: none; }
 .tl-edit {
   position: absolute;
   z-index: 5;
@@ -193,9 +193,12 @@ input[type="color"] { width: 36px; height: 30px; border: 1px solid var(--line); 
 .style-bar .fmt-bold { font-weight: 700; }
 .style-bar .fmt-underline { text-decoration: underline; }
 
-.tl-marquee { position: absolute; z-index: 3; box-sizing: border-box; border: 1px dashed var(--accent); background: rgba(10,102,194,.08); pointer-events: none; }
+.tl-marquee { position: absolute; z-index: 3; box-sizing: border-box; background: rgba(10,102,194,.12); pointer-events: none; }
 .style-bar .style-count { align-self: center; padding: 0 8px; color: #fff; font-size: 12px; opacity: .85; white-space: nowrap; }
 .style-bar .style-count[hidden] { display: none; }
+.style-bar .style-size { align-self: center; min-width: 22px; padding: 0 2px; color: #fff; font-size: 14px; font-variant-numeric: tabular-nums; text-align: center; }
+.style-bar .style-mixed { align-self: center; padding: 0 6px 0 0; color: #fff; font-size: 11px; opacity: .7; white-space: nowrap; }
+.style-bar .style-mixed[hidden] { display: none; }
 .style-bar .style-sep { align-self: center; width: 1px; height: 20px; margin: 0 4px; background: rgba(255,255,255,.25); }
 .style-bar .fmt-italic { font-style: italic; }
 .style-bar button svg { display: block; width: 16px; height: 16px; margin: 0 auto; }

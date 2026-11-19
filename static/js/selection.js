@@ -1,5 +1,6 @@
-import { $, SIZE_STEPS, api, getJson, hexToRgb, showError, state, t, toast } from "./core.js";
+import { $, api, getJson, hexToRgb, showError, state, t, toast } from "./core.js";
 import { scaleFactor } from "./view.js";
+import { setSizeInput } from "./toolbar.js";
 import { applyOps } from "./tools.js";
 import { runAction } from "./files.js";
 import { fontKey, isCustomFont, openLineEditor, placeBox } from "./editor.js";
@@ -110,12 +111,40 @@ export function selectionAlign(items) {
   return null;
 }
 
+// Sizes are shown and stepped in whole points.
+export function roundedSize(size) {
+  return Math.max(1, Math.round(size));
+}
+
+// Most common size wins; on a tie the bigger one does.
+export function majoritySize(items) {
+  const counts = new Map();
+  items.forEach((ln) => {
+    const s = roundedSize(ln.size);
+    counts.set(s, (counts.get(s) || 0) + 1);
+  });
+  let best = null;
+  let bestCount = 0;
+  counts.forEach((count, s) => {
+    if (count > bestCount || (count === bestCount && s > best)) {
+      best = s;
+      bestCount = count;
+    }
+  });
+  return best;
+}
+
+export function sizesMixed(items) {
+  return new Set(items.map((ln) => roundedSize(ln.size))).size > 1;
+}
+
 export function setSelection(items, anchor) {
   state.imageSel = null;
   state.selected = {
     page: state.page,
     items,
     anchor: anchor || items[items.length - 1] || null,
+    size: majoritySize(items),
   };
   syncSelectionDom();
   showStyleBar();
@@ -208,7 +237,9 @@ export function restoreSelection(lines) {
     clearTextSelection();
     return;
   }
-  state.selected = { page: state.page, items: found, anchor: anchor || found[found.length - 1] };
+  // Same lines after a redraw, so keep the size the user is stepping from.
+  const size = sel.size ?? majoritySize(found);
+  state.selected = { page: state.page, items: found, anchor: anchor || found[found.length - 1], size };
   syncSelectionDom();
   showStyleBar();
 }
@@ -237,6 +268,10 @@ export function showStyleBar() {
   const count = bar.querySelector(".style-count");
   count.hidden = items.length < 2;
   count.textContent = t("selected_lines", { n: items.length });
+  const size = state.selected.size;
+  bar.querySelector(".style-size").textContent = String(size);
+  bar.querySelector(".style-mixed").hidden = !sizesMixed(items);
+  setSizeInput(size);
 
   const box = unionBox(items);
   const s = scaleFactor();
@@ -251,16 +286,6 @@ export function showStyleBar() {
 
 export function hideStyleBar() {
   $("#style-bar").hidden = true;
-}
-
-export function nextStepSize(current, dir) {
-  if (dir > 0) {
-    const up = SIZE_STEPS.find((v) => v > current + 0.01);
-    return up !== undefined ? up : current + 1;
-  }
-  let down = null;
-  SIZE_STEPS.forEach((v) => { if (v < current - 0.01) down = v; });
-  return down !== null ? down : Math.max(1, current - 1);
 }
 
 // Keeps the alignment, so the line does not jump.
@@ -282,9 +307,14 @@ export function styleOp(ln, text) {
 }
 
 // An open state.editor is saved first, with the text as typed.
-export async function applyStyle(act) {
+export async function applyStyle(act, value) {
   const items = selectedItems();
   if (!items.length) return;
+  // A+ and A- step from the size shown in the bar, in whole points.
+  let target = null;
+  if (act === "larger") target = state.selected.size + 1;
+  if (act === "smaller") target = Math.max(1, state.selected.size - 1);
+  if (act === "size") target = value;
   if ((act === "bold" || act === "italic") && isCustomFont(fontKey())) {
     toast(t("font_no_style"), true);
     return;
@@ -307,8 +337,7 @@ export async function applyStyle(act) {
       const text = editedLn && sameLine(ln, editedLn) ? editedText : ln.text;
       if (!text.trim()) return;
       const op = styleOp(ln, text);
-      if (act === "larger") op.size = nextStepSize(ln.size, 1);
-      if (act === "smaller") op.size = nextStepSize(ln.size, -1);
+      if (target !== null) op.size = target;
       if (act === "bold") op.bold = toggleBold;
       if (act === "italic") op.italic = toggleItalic;
       if (act.startsWith("align-")) {
@@ -322,6 +351,7 @@ export async function applyStyle(act) {
     });
   }
   if (!ops.length) return;
+  if (target !== null && state.selected) state.selected.size = target;
   await runAction(() => applyOps(ops));
 }
 
@@ -331,6 +361,13 @@ export function bindStyleBar() {
   bar.addEventListener("click", (e) => {
     const btn = e.target.closest("button[data-act]");
     if (btn) applyStyle(btn.dataset.act);
+  });
+  // Typing a size in the top box sets the selected lines when no text is open for editing.
+  $("#size").addEventListener("change", (e) => {
+    if (state.editor || !selectedItems().length) return;
+    const value = Number(e.target.value);
+    if (value >= 1 && value <= 400) applyStyle("size", value);
+    else setSizeInput(state.selected.size);
   });
   bindPictureMenu();
   document.addEventListener("pointermove", (e) => { state.pointer = [e.clientX, e.clientY]; });
@@ -500,7 +537,7 @@ export async function moveLines(items, dx, dy) {
   pdx = Math.max(-box[0], Math.min(page.width - box[2], pdx));
   pdy = Math.max(-box[1], Math.min(page.height - box[3], pdy));
   if (Math.abs(pdx) < 0.5 && Math.abs(pdy) < 0.5) return;
-  const ops = items.map((ln) => ({ type: "erase_text", page: state.page, rect: ln.bbox }));
+  const ops = items.map((ln) => ({ type: "erase_text", page: state.page, rect: ln.bbox, origin: ln.origin }));
   items.forEach((ln) => ops.push({
     type: "write_text",
     page: state.page,

@@ -25,6 +25,8 @@ from starlette.background import BackgroundTask
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 
+from .linetext import remove_line
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 # Folders and files made here are private to the user who runs the app.
 os.umask(0o077)
@@ -494,7 +496,7 @@ class Op(BaseModel):
     rect: Optional[list[float]] = None
     text: Optional[str] = None
     font: str = "auto"
-    size: float = 12
+    size: float = Field(12, gt=0, le=1000)
     origin: Optional[list[float]] = None
     font_xref: int = 0
     base_font: Optional[str] = None
@@ -839,6 +841,11 @@ def _erase(page: fitz.Page, rect: fitz.Rect) -> None:
     )
 
 
+def _erase_line(doc: fitz.Document, op: Op) -> None:
+    # Only the line's own glyphs go, so text drawn over or under it is kept.
+    remove_line(doc, op.page, op.rect, op.origin)
+
+
 def _page_at(doc: fitz.Document, index: int) -> fitz.Page:
     if not 0 <= index < doc.page_count:
         raise ValueError(f"page {index + 1} does not exist")
@@ -895,7 +902,7 @@ def _apply_op(doc: fitz.Document, op: Op) -> Optional[str]:
         return None
 
     if op.type == "erase_text":
-        _erase(page, fitz.Rect(op.rect))
+        _erase_line(doc, op)
         return None
 
     if op.type in ("move_text", "write_text"):
@@ -904,7 +911,8 @@ def _apply_op(doc: fitz.Document, op: Op) -> Optional[str]:
             raise ValueError("move needs a destination")
         rect = fitz.Rect(op.rect)
         if op.type == "move_text":
-            _erase(page, rect)
+            _erase_line(doc, op)
+            page = doc[op.page]
         x, y = op.dest
         target = fitz.Rect(x, y - op.size, x + max(rect.width, 1), y + op.size * 0.3)
         status = _place_text(page, doc, target, op.text, op.font, op.size, op.color,
@@ -915,7 +923,11 @@ def _apply_op(doc: fitz.Document, op: Op) -> Optional[str]:
         tracking = _tracking_value(op.tracking, op.size)  # validate before anything is erased
         leading = _leading_value(op.leading)
         rect = fitz.Rect(op.rect)
-        if op.type != "text":
+        if op.type == "replace_span":
+            _erase_line(doc, op)
+            page = doc[op.page]
+        elif op.type == "replace_text":
+            # The redact tool clears a whole area on purpose, so it keeps the area erase.
             _erase(page, rect)
         if not op.text:
             return None
