@@ -224,6 +224,25 @@ function buildSpacingPanel({ kerning, leading, size }, onChange) {
   return { panel, kerningInput: kern.input, leadingInput: lead.input };
 }
 
+// The spacing row goes under the line when there is room, else above it,
+// on whichever side has the bigger gap to the next line.
+function placeTools(tools, bbox, s) {
+  const lines = (state.lineCache && state.lineCache.lines) || [];
+  const page = state.info.pages[state.page];
+  const height = (tools.offsetHeight + 4) * s; // in points
+  const gap = (below) => {
+    let limit = below ? page.height : 0;
+    lines.forEach((ln) => {
+      if (ln.bbox[2] <= bbox[0] || ln.bbox[0] >= bbox[2]) return;
+      if (below && ln.bbox[1] >= bbox[3] - 0.5) limit = Math.min(limit, ln.bbox[1]);
+      if (!below && ln.bbox[3] <= bbox[1] + 0.5) limit = Math.max(limit, ln.bbox[3]);
+    });
+    return below ? limit - bbox[3] : bbox[1] - limit;
+  };
+  const below = gap(true) >= height || gap(true) >= gap(false);
+  tools.style.top = below ? `${bbox[3] / s + 4}px` : `${bbox[1] / s - tools.offsetHeight - 4}px`;
+}
+
 export function startEditor({ bbox, text, size, color, bold, bg, kerning = 0, leading = null, onCommit }) {
   if (state.editor && state.editor.__finish) state.editor.__finish(true);
   const s = scaleFactor();
@@ -265,7 +284,6 @@ export function startEditor({ bbox, text, size, color, bold, bg, kerning = 0, le
   const tools = document.createElement("div");
   tools.className = "tl-tools";
   tools.style.left = `${bbox[0] / s}px`;
-  tools.style.top = `${bbox[3] / s + 4}px`;
   const okBtn = document.createElement("button");
   okBtn.className = "ok";
   okBtn.textContent = "✓";
@@ -278,6 +296,7 @@ export function startEditor({ bbox, text, size, color, bold, bg, kerning = 0, le
     if (!e.target.closest("input")) e.preventDefault();
   });
   $("#stage").append(ed, tools);
+  placeTools(tools, bbox, s);
   state.editor = ed;
 
   let done = false;

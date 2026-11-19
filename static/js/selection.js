@@ -154,6 +154,13 @@ export function selectOnly(ln) {
   setSelection([ln], ln);
 }
 
+// Same as cut, minus the clipboard.
+export function deleteSelection() {
+  const items = selectedItems();
+  clearSelection();
+  runAction(() => applyOps(items.map((ln) => ({ type: "erase_text", page: state.page, rect: ln.bbox, origin: ln.origin }))));
+}
+
 export function clearSelection() {
   state.selected = null;
   state.imageSel = null;
@@ -378,6 +385,12 @@ export function bindStyleBar() {
       pictureAction("delete");
       return;
     }
+    if ((e.key === "Delete" || e.key === "Backspace") && selectedItems().length && !state.editor && !typing
+      && (state.tool === "select" || state.tool === "replace")) {
+      e.preventDefault();
+      deleteSelection();
+      return;
+    }
     if (e.key === "Escape" && !$("#img-menu").hidden) {
       hideImageMenu();
       return;
@@ -394,13 +407,17 @@ export function bindStyleBar() {
         if (lines.length) setSelection(lines.slice(), lines[0]);
       }).catch(showError);
     }
-    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !state.editor && !editable && state.info
-      && (state.tool === "select" || state.tool === "replace")) {
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !state.editor && !editable && state.info) {
       const key = e.key.toLowerCase();
-      if ((key === "c" || key === "x") && selectedItems().length) {
+      // Copy works from any tool. Cut and paste stay with the select and replace tools.
+      const textTool = state.tool === "select" || state.tool === "replace";
+      if (key === "c" && selectedItems().length) {
         e.preventDefault();
-        copySelection(key === "x");
-      } else if (key === "v" && state.clipboard) {
+        copySelection(false);
+      } else if (textTool && key === "x" && selectedItems().length) {
+        e.preventDefault();
+        copySelection(true);
+      } else if (textTool && key === "v" && state.clipboard) {
         e.preventDefault();
         runAction(pasteClipboard);
       }

@@ -272,3 +272,30 @@ def test_selected_text_is_tinted_without_a_frame(ui, server):
     page.wait_for_timeout(200)
     hovered = boxes.nth(0).evaluate("el => getComputedStyle(el).borderTopWidth")
     assert hovered == "0px"
+
+
+def test_delete_key_removes_the_selected_lines(ui, server):
+    page = ui.page
+    doc = open_file(page, fixture("multi.pdf"))
+    before = len(lines_of(server.base, doc))
+    boxes = page.locator(".tl-box")
+    boxes.nth(2).click()
+    page.wait_for_timeout(300)
+    boxes.nth(5).click(modifiers=["Shift"])
+    page.wait_for_timeout(300)
+    page.keyboard.press("Delete")
+    page.wait_for_timeout(800)
+    assert len(lines_of(server.base, doc)) == before - 4
+
+
+def test_copy_works_from_the_add_text_tool(ui, server):
+    page = ui.page
+    open_file(page, fixture("multi.pdf"))
+    page.locator(".tl-box").nth(2).click()
+    page.wait_for_timeout(300)
+    page.locator('.tool[data-tool="text"]').click()
+    page.wait_for_timeout(200)
+    page.keyboard.press("Control+c")
+    page.wait_for_timeout(200)
+    copied = page.evaluate("() => window.pdfStudio.state.clipboard && window.pdfStudio.state.clipboard.items.length")
+    assert copied == 1
