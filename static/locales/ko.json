@@ -172,5 +172,18 @@
   "leading_auto": "자동",
   "spacing_increase": "늘리기",
   "spacing_decrease": "줄이기",
-  "text_delete": "텍스트 삭제"
+  "text_delete": "텍스트 삭제",
+  "about_open": "정보",
+  "about_title": "PDF Studio 정보",
+  "about_version": "버전 {n}",
+  "about_updates": "업데이트",
+  "about_check_updates": "업데이트 확인",
+  "about_contact": "문의하기",
+  "about_contact_link": "Issues 페이지 열기",
+  "about_support": "프로젝트 후원",
+  "about_support_text": "PDF Studio는 무료 오픈 소스 소프트웨어입니다. 도움이 되었다면 기부로 개발을 후원해 주세요.",
+  "about_copy_hint": "주소를 클릭하면 복사됩니다.",
+  "donate_copy": "복사",
+  "donate_copied": "복사됨",
+  "donate_copy_failed": "직접 복사하세요"
 }

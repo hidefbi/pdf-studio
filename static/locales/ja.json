@@ -172,5 +172,18 @@
   "leading_auto": "自動",
   "spacing_increase": "増やす",
   "spacing_decrease": "減らす",
-  "text_delete": "テキストを削除"
+  "text_delete": "テキストを削除",
+  "about_open": "情報",
+  "about_title": "PDF Studio について",
+  "about_version": "バージョン {n}",
+  "about_updates": "アップデート",
+  "about_check_updates": "アップデートを確認",
+  "about_contact": "お問い合わせ",
+  "about_contact_link": "Issues ページを開く",
+  "about_support": "プロジェクトを支援",
+  "about_support_text": "PDF Studio は無料のオープンソースソフトウェアです。役に立ったら、寄付で開発を支援いただけます。",
+  "about_copy_hint": "アドレスをクリックするとコピーできます。",
+  "donate_copy": "コピー",
+  "donate_copied": "コピーしました",
+  "donate_copy_failed": "手動でコピーしてください"
 }

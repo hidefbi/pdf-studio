@@ -172,5 +172,18 @@
   "leading_auto": "自动",
   "spacing_increase": "增加",
   "spacing_decrease": "减少",
-  "text_delete": "删除文字"
+  "text_delete": "删除文字",
+  "about_open": "关于",
+  "about_title": "关于 PDF Studio",
+  "about_version": "版本 {n}",
+  "about_updates": "更新",
+  "about_check_updates": "检查更新",
+  "about_contact": "联系我们",
+  "about_contact_link": "打开 Issues 页面",
+  "about_support": "赞助本项目",
+  "about_support_text": "PDF Studio 是免费的开源软件。如果它帮你节省了时间，可以通过捐助支持开发。",
+  "about_copy_hint": "点击地址即可复制。",
+  "donate_copy": "复制",
+  "donate_copied": "已复制",
+  "donate_copy_failed": "请手动复制"
 }

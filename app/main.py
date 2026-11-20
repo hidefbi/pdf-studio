@@ -26,6 +26,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 
 from .linetext import remove_line, spacing_map
+from .version import VERSION
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 # Folders and files made here are private to the user who runs the app.
@@ -1919,6 +1920,11 @@ _ever_connected = False
 @app.get("/api/identity")
 def identity():
     return {"app": "pdf-studio"}
+
+
+@app.get("/api/version")
+def version():
+    return {"version": VERSION}
 
 
 class ClientMessage(BaseModel):

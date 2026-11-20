@@ -172,5 +172,18 @@
   "leading_auto": "Auto",
   "spacing_increase": "Increase",
   "spacing_decrease": "Decrease",
-  "text_delete": "Delete text"
+  "text_delete": "Delete text",
+  "about_open": "About",
+  "about_title": "About PDF Studio",
+  "about_version": "Version {n}",
+  "about_updates": "Updates",
+  "about_check_updates": "Check for updates",
+  "about_contact": "Contact us",
+  "about_contact_link": "Open the issues page",
+  "about_support": "Support this project",
+  "about_support_text": "PDF Studio is free and open source. If it saves you time, you can support its development with a donation.",
+  "about_copy_hint": "Click an address to copy it.",
+  "donate_copy": "Copy",
+  "donate_copied": "Copied",
+  "donate_copy_failed": "Copy it by hand"
 }
