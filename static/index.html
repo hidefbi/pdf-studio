@@ -29,6 +29,8 @@
     <select id="lang">
       <option value="en">English</option>
       <option value="zh-CN">简体中文</option>
+      <option value="ja">日本語</option>
+      <option value="ko">한국어</option>
     </select>
   </header>
 
@@ -243,6 +245,9 @@
   </div>
 
   <div id="toast" class="toast"></div>
+  <div id="text-menu" class="ctx-menu" hidden>
+    <button type="button" data-text="delete" class="danger" data-i18n="text_delete">Delete text</button>
+  </div>
   <div id="img-menu" class="ctx-menu" hidden>
     <button type="button" data-img="top" data-i18n="image_front">Bring to front</button>
     <button type="button" data-img="under" data-i18n="image_under_text">Send under text</button>

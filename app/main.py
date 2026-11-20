@@ -53,6 +53,8 @@ BUILTIN_FONTS = {
     "tiro": "Times Roman",
     "cour": "Courier",
     "china-s": "Simplified Chinese (built-in CJK)",
+    "japan": "Japanese (built-in CJK)",
+    "korea": "Korean (built-in CJK)",
 }
 STANDARD_FONTS = {"helv", "hebo", "heit", "hebi", "tiro", "tibo", "tiit", "tibi", "cour", "cobo", "coit", "cobi"}
 MARKUP_TYPES = {"highlight", "underline", "strikeout", "squiggly"}
@@ -613,6 +615,15 @@ def _style_variant(key: str, bold: Optional[bool], italic: Optional[bool]) -> st
     return key
 
 
+def _cjk_key(text: str) -> str:
+    """Built-in CJK font for the scripts in the text. Kana and Hangul need their own font."""
+    if re.search(r"[\u3040-\u30ff]", text):
+        return "japan"
+    if re.search(r"[\uac00-\ud7af]", text):
+        return "korea"
+    return "china-s"
+
+
 def _choose_font(page: fitz.Page, doc: fitz.Document, text: str,
                  xref: int, key: Optional[str], base: Optional[str]):
     # A chosen font is always used; only "auto" may keep the embedded one.
@@ -622,7 +633,7 @@ def _choose_font(page: fitz.Page, doc: fitz.Document, text: str,
         if not explicit:
             key = _base_key(base)
         primary = _resolve_font(page, key)
-    fallback = _resolve_font(page, "china-s")
+    fallback = _resolve_font(page, _cjk_key(text))
     return primary, fallback
 
 
@@ -893,7 +904,7 @@ def _apply_op(doc: fitz.Document, op: Op) -> Optional[str]:
             return None
         has_cjk = bool(re.search(rf"[{CJK}]", op.text))
         if has_cjk:
-            fontname = "china-s"
+            fontname = _cjk_key(op.text)
         else:
             fontname = "hebo" if op.bold else "helv"
         page.insert_text(fitz.Point(op.origin[0], op.origin[1]), op.text,
@@ -1708,7 +1719,7 @@ def _stamp_pages(doc: fitz.Document, body: StampRequest, name: str) -> int:
         text = (body.text.replace("{page}", str(index + 1))
                 .replace("{total}", str(doc.page_count))
                 .replace("{name}", name))
-        fontname = "china-s" if any(ord(ch) > 127 for ch in text) else "helv"
+        fontname = _cjk_key(text) if any(ord(ch) > 127 for ch in text) else "helv"
         width = fitz.get_text_length(text, fontname=fontname, fontsize=body.size)
         rect = page.rect
         shape = page.new_shape()

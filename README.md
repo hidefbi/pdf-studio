@@ -37,7 +37,7 @@ It started as a way to change a few lines in a PDF without paying for a full des
 
 **Fonts**
 
-- Use the built-in fonts (Helvetica, Times, Courier, and a Simplified Chinese font).
+- Use the built-in fonts (Helvetica, Times, Courier, and Simplified Chinese, Japanese and Korean fonts).
 - Upload your own TrueType (.ttf) fonts and use them in new text.
 
 **Export**
@@ -134,7 +134,7 @@ Then run the tests.
 ```
 app/                 Python backend (FastAPI and PyMuPDF)
 static/              Browser front end (HTML, CSS, ES modules in static/js)
-static/locales/      English and Simplified Chinese text
+static/locales/      English, Simplified Chinese, Japanese and Korean text
 tests/               pytest and Playwright tests, with sample PDFs
 docs/                Screenshots for this README
 start.command        Starts the app on macOS

@@ -171,5 +171,6 @@
   "leading_title": "行距（pt），留空为自动",
   "leading_auto": "自动",
   "spacing_increase": "增加",
-  "spacing_decrease": "减少"
+  "spacing_decrease": "减少",
+  "text_delete": "删除文字"
 }

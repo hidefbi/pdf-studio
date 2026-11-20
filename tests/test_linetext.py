@@ -262,3 +262,23 @@ def test_saved_line_spacing_is_read_back(server, tmp_path):
     lower = next(x for x in lines if x["text"] == "Lower line")
     assert abs(upper["leading"] - 20) < 0.5
     assert lower["leading"] == upper["leading"]
+
+
+def test_japanese_and_korean_built_in_fonts(tmp_path):
+    from app.main import _cjk_key
+    japanese = "".join(chr(c) for c in (0x3053, 0x3093, 0x306b, 0x3061, 0x306f))  # konnichiha
+    korean = "".join(chr(c) for c in (0xd55c, 0xad6d, 0xc5b4))  # hangugeo
+    assert _cjk_key(japanese) == "japan"
+    assert _cjk_key(korean) == "korea"
+    assert _cjk_key(chr(0x4e2d)) == "china-s"
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((50, 100), "Account 12345", fontname="helv", fontsize=11)
+    page.insert_text((50, 130), japanese, fontname="japan", fontsize=12)
+    page.insert_text((50, 160), korean, fontname="korea", fontsize=12)
+    target = next(line for line in lines(doc) if line["text"] == japanese)
+    remove_line(doc, 0, target["bbox"], target["origin"])
+    after = texts(doc)
+    assert japanese not in after
+    assert korean in after
+    assert "Account 12345" in after

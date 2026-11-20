@@ -17,7 +17,8 @@ async function init() {
   buildToolbarControls();
   bindSizeAndColor();
   setTool("select");
-  const lang = localStorage.getItem(LANG_KEY) || (navigator.language.startsWith("zh") ? "zh-CN" : "en");
+  const detected = { zh: "zh-CN", ja: "ja", ko: "ko" }[navigator.language.slice(0, 2)] || "en";
+  const lang = localStorage.getItem(LANG_KEY) || detected;
   await setLocale(lang);
   await loadFonts();
   const saved = localStorage.getItem(DOC_KEY);

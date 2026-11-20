@@ -171,5 +171,6 @@
   "leading_title": "Leading (pt). Empty means automatic",
   "leading_auto": "Auto",
   "spacing_increase": "Increase",
-  "spacing_decrease": "Decrease"
+  "spacing_decrease": "Decrease",
+  "text_delete": "Delete text"
 }

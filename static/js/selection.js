@@ -157,8 +157,36 @@ export function selectOnly(ln) {
 // Same as cut, minus the clipboard.
 export function deleteSelection() {
   const items = selectedItems();
+  if (!items.length) return;
   clearSelection();
   runAction(() => applyOps(items.map((ln) => ({ type: "erase_text", page: state.page, rect: ln.bbox, origin: ln.origin }))));
+}
+
+export function showTextMenu(x, y) {
+  const menu = $("#text-menu");
+  menu.hidden = false;
+  const w = menu.offsetWidth;
+  const h = menu.offsetHeight;
+  menu.style.left = `${Math.min(x, window.innerWidth - w - 6)}px`;
+  menu.style.top = `${Math.min(y, window.innerHeight - h - 6)}px`;
+}
+
+export function hideTextMenu() {
+  $("#text-menu").hidden = true;
+}
+
+export function bindTextMenu() {
+  const menu = $("#text-menu");
+  menu.addEventListener("mousedown", (e) => e.preventDefault());
+  menu.addEventListener("click", (e) => {
+    if (!e.target.closest("button[data-text]")) return;
+    hideTextMenu();
+    deleteSelection();
+  });
+  document.addEventListener("pointerdown", (e) => {
+    if (!menu.contains(e.target)) hideTextMenu();
+  });
+  window.addEventListener("scroll", hideTextMenu, true);
 }
 
 export function clearSelection() {
@@ -379,6 +407,7 @@ export function bindStyleBar() {
     else setSizeInput(state.selected.size);
   });
   bindPictureMenu();
+  bindTextMenu();
   document.addEventListener("paste", onPasteEvent);
   document.addEventListener("pointermove", (e) => { state.pointer = [e.clientX, e.clientY]; });
   document.addEventListener("keydown", (e) => {
@@ -392,6 +421,10 @@ export function bindStyleBar() {
       && (state.tool === "select" || state.tool === "replace")) {
       e.preventDefault();
       deleteSelection();
+      return;
+    }
+    if (e.key === "Escape" && !$("#text-menu").hidden) {
+      hideTextMenu();
       return;
     }
     if (e.key === "Escape" && !$("#img-menu").hidden) {
@@ -440,13 +473,17 @@ export function bindLineBox(box, ln, lines) {
     if (state.tool === "replace" && !(e.shiftKey || e.metaKey || e.ctrlKey)) openLineEditor(ln);
   });
   box.addEventListener("contextmenu", (e) => {
-    // Right-click over text that sits on a picture opens the picture menu.
-    if (state.tool !== "select") return;
-    const picture = pictureUnderPoint(e);
-    if (!picture) return;
     e.preventDefault();
-    selectImage(picture.__img);
-    showImageMenu(e.clientX, e.clientY);
+    // Over a picture the picture menu still wins.
+    const picture = state.tool === "select" ? pictureUnderPoint(e) : null;
+    if (picture) {
+      selectImage(picture.__img);
+      showImageMenu(e.clientX, e.clientY);
+      return;
+    }
+    // Right-click selects the line unless it is already in the selection, then offers delete.
+    if (!isSelected(ln)) selectOnly(ln);
+    showTextMenu(e.clientX, e.clientY);
   });
   box.addEventListener("dblclick", () => {
     if (state.tool === "select") openLineEditor(ln);

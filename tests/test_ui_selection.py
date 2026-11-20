@@ -330,3 +330,23 @@ def test_paste_of_our_own_copy_keeps_the_lines(ui, server):
     }""")
     page.wait_for_timeout(800)
     assert len(lines_of(server.base, doc)) == before + 1
+
+
+def test_right_click_delete_removes_the_selected_lines(ui, server):
+    page = ui.page
+    doc = open_file(page, fixture("multi.pdf"))
+    before = len(lines_of(server.base, doc))
+    boxes = page.locator(".tl-box")
+    boxes.nth(2).click()
+    page.wait_for_timeout(300)
+    boxes.nth(5).click(modifiers=["Shift"])
+    page.wait_for_timeout(300)
+    boxes.nth(3).click(button="right")
+    page.wait_for_timeout(200)
+    menu = page.locator("#text-menu")
+    assert menu.is_visible()
+    assert page.locator(".tl-box.selected").count() == 4
+    page.locator('#text-menu button[data-text="delete"]').click()
+    page.wait_for_timeout(800)
+    assert len(lines_of(server.base, doc)) == before - 4
+    assert not menu.is_visible()
