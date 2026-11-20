@@ -1,7 +1,7 @@
 """Browser tests for inline editing: font choice, click-away save, clipboard."""
 from __future__ import annotations
 
-from support import click_line, fixture, fonts_with, open_file, saved_pdf, saved_text
+from support import call, click_line, fixture, fonts_with, open_file, saved_pdf, saved_text
 
 
 def count_text(base, doc, token):
@@ -49,7 +49,7 @@ def test_copy_paste_at_pointer_undo_and_cut(ui, server):
     ui.page.keyboard.press("Control+c")
     ui.page.wait_for_timeout(200)
     img = ui.page.locator("#page-img").bounding_box()
-    tx, ty = img["x"] + img["width"] * 0.6, img["y"] + img["height"] * 0.85
+    tx, ty = img["x"] + img["width"] * 0.3, img["y"] + img["height"] * 0.85
     ui.page.mouse.move(tx, ty)
     ui.page.wait_for_timeout(150)
     ui.page.keyboard.press("Control+v")
@@ -209,3 +209,28 @@ def test_spacing_row_follows_the_editor_bottom(ui, server):
     assert cancel_bg == "rgb(198, 40, 40)"
     step_bg = page.locator(".tl-step-btn").first.evaluate("el => getComputedStyle(el).backgroundColor")
     assert step_bg != "rgba(0, 0, 0, 0)"
+
+
+def test_editor_starts_from_the_saved_spacing(ui, server):
+    page = ui.page
+    doc = open_file(page, fixture("multi.pdf"))
+    kern = page.locator('.tl-step[data-field="kerning"] input')
+    page.locator(".tl-box[title*='Billing']").first.dblclick()
+    page.wait_for_timeout(300)
+    kern.fill("100")
+    kern.press("Enter")
+    page.wait_for_timeout(1000)
+
+    page.locator(".tl-box[title*='Billing']").first.dblclick()
+    page.wait_for_timeout(300)
+    assert page.locator('.tl-step[data-field="kerning"] input').input_value() == "100"
+    backdrop = page.locator(".tl-backdrop").bounding_box()
+    box = page.locator(".tl-box[title*='Billing']").first.bounding_box()
+    assert abs(backdrop["x"] - box["x"]) < 2 and abs(backdrop["width"] - box["width"]) < 2
+
+    kern = page.locator('.tl-step[data-field="kerning"] input')
+    kern.fill("0")
+    kern.press("Enter")
+    page.wait_for_timeout(1000)
+    lines = call(server.base, "GET", f"/api/docs/{doc}/pages/0/lines")[1]["lines"]
+    assert next(x for x in lines if x["text"].startswith("Billing"))["tracking"] == 0

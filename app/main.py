@@ -25,7 +25,7 @@ from starlette.background import BackgroundTask
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 
-from .linetext import remove_line
+from .linetext import remove_line, spacing_map
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 # Folders and files made here are private to the user who runs the app.
@@ -916,7 +916,9 @@ def _apply_op(doc: fitz.Document, op: Op) -> Optional[str]:
         x, y = op.dest
         target = fitz.Rect(x, y - op.size, x + max(rect.width, 1), y + op.size * 0.3)
         status = _place_text(page, doc, target, op.text, op.font, op.size, op.color,
-                             xref=op.font_xref, origin=(x, y), base=op.base_font)
+                             xref=op.font_xref, origin=(x, y), base=op.base_font,
+                             tracking=_tracking_value(op.tracking, op.size),
+                             leading=_leading_value(op.leading))
         return None if status == "ok" else f"page {op.page + 1}: moved text overlaps nearby content"
 
     if op.type in ("text", "replace_text", "replace_span"):
@@ -1220,6 +1222,37 @@ def text_lines(doc_id: str, index: int):
     return value
 
 
+def _tracking_at(box, spacing) -> int:
+    """Most common letter spacing of the glyphs on a line, kept in the allowed range."""
+    counts = {}
+    for (x, y), value in spacing:
+        if box[0] - 1 <= x <= box[2] + 1 and box[1] <= y <= box[3]:
+            counts[value] = counts.get(value, 0) + 1
+    if not counts:
+        return 0
+    best = max(counts, key=counts.get)
+    return int(max(TRACKING_MIN, min(TRACKING_MAX, best)))
+
+
+def _set_leading(lines: list) -> None:
+    """Line step between stacked lines of one paragraph, read in display order.
+
+    Lines count as one paragraph when they share a size and start at the same x.
+    MuPDF can split one paragraph into several blocks, so blocks are not used.
+    """
+    def stacked(a, b):
+        return abs(a["size"] - b["size"]) < 0.5 and abs(a["origin"][0] - b["origin"][0]) < 1.5
+
+    for a, b in zip(lines, lines[1:]):
+        gap = b["origin"][1] - a["origin"][1]
+        if stacked(a, b) and LEADING_MIN <= gap <= LEADING_MAX:
+            a["leading"] = round(gap, 2)
+    # The last line of a paragraph has no step below it, so it takes the one above.
+    for a, b in zip(lines, lines[1:]):
+        if a["leading"] is not None and b["leading"] is None and stacked(a, b):
+            b["leading"] = a["leading"]
+
+
 def _text_lines_uncached(doc_id: str, index: int) -> dict:
     path = _doc_dir(doc_id)
     doc = fitz.open(path / "current.pdf")
@@ -1229,6 +1262,7 @@ def _text_lines_uncached(doc_id: str, index: int) -> dict:
         xrefs = {f[3]: f[0] for f in page.get_fonts()}
         names = [(f[0], _font_key(f[3])) for f in page.get_fonts()]
         underlines = [a.rect for a in (page.annots() or []) if a.type[0] == fitz.PDF_ANNOT_UNDERLINE]
+        spacing = spacing_map(doc, index)
         lines = []
         for block in page.get_text("dict")["blocks"]:
             if block.get("type") != 0:
@@ -1250,11 +1284,14 @@ def _text_lines_uncached(doc_id: str, index: int) -> dict:
                     "color": "#%06x" % main["color"],
                     "font_xref": xrefs.get(main["font"]) or _match_font_xref(main["font"], names),
                     "base_font": main["font"],
+                    "tracking": _tracking_at(line["bbox"], spacing),
+                    "leading": None,
                 })
     finally:
         doc.close()
     # Read in display order, not file order.
     lines.sort(key=lambda ln: (ln["bbox"][1], ln["bbox"][0]))
+    _set_leading(lines)
     return {"lines": lines}
 
 

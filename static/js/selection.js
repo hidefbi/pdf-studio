@@ -310,6 +310,8 @@ export function styleOp(ln, text) {
     color: hexToRgb(ln.color),
     align: alignOf(ln),
     block: ln.block || null,
+    tracking: ln.tracking ?? 0,
+    leading: ln.leading ?? null,
   };
 }
 
@@ -561,6 +563,8 @@ export async function moveLines(items, dx, dy) {
     font_xref: ln.font_xref,
     size: ln.size,
     color: hexToRgb(ln.color),
+    tracking: ln.tracking ?? 0,
+    leading: ln.leading ?? null,
   }));
   // The redraw matches the selection by place, so set it first.
   state.selected = {

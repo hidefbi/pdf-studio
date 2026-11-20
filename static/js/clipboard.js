@@ -7,21 +7,29 @@ import { clearSelection, selectedItems, shiftBox, unionBox } from "./selection.j
 
 // ---------- text clipboard ----------
 
+// Plain text we put on the system clipboard lately. A paste that finds one of these
+// gets our own lines, even when the system copy is a little behind.
+const ownTexts = [];
+
 // Lines keep their font and color in-app. The plain text also goes to the system clipboard.
 export function copySelection(cut) {
   const items = selectedItems();
   if (!items.length) return;
   const box = unionBox(items);
   const text = items.map((ln) => ln.text).join("\n");
-  state.clipboard = {
+  const clip = {
     docId: state.docId,
     ref: [box[0], box[1]],
     size: [box[2] - box[0], box[3] - box[1]],
     items: items.map((ln) => ({ ...ln })),
     text,
+    written: false,
   };
+  state.clipboard = clip;
+  ownTexts.push(text);
+  if (ownTexts.length > 20) ownTexts.shift();
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).catch(() => {});
+    navigator.clipboard.writeText(text).then(() => { clip.written = true; }).catch(() => {});
   }
   if (!cut) return;
   clearSelection();
@@ -62,8 +70,9 @@ export function onPasteEvent(e) {
   if (!state.info || state.editor) return;
   const text = (e.clipboardData && e.clipboardData.getData("text/plain")) || "";
   const clip = state.clipboard;
-  // No text on the system clipboard (say, an image) falls back to our own lines.
-  if (clip && clip.items.length && (!text.trim() || text === clip.text)) {
+  // Our own lines win when the system clipboard holds our text, has no text,
+  // or never took our copy (then its text may be older than the copy).
+  if (clip && clip.items.length && (!text.trim() || ownTexts.includes(text) || !clip.written)) {
     e.preventDefault();
     runAction(pasteClipboard);
   } else if (text.trim()) {
@@ -103,5 +112,7 @@ export async function pasteClipboard() {
     font_xref: sameDoc ? ln.font_xref : 0,
     size: ln.size,
     color: hexToRgb(ln.color),
+    tracking: ln.tracking ?? 0,
+    leading: ln.leading ?? null,
   })));
 }

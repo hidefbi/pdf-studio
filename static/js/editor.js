@@ -66,11 +66,13 @@ export function openLineEditor(ln) {
     color: ln.color,
     bold: isBoldFont(ln.base_font),
     bg: sampleBackground(ln.bbox),
+    kerning: ln.tracking ?? 0,
+    leading: ln.leading ?? null,
     onCommit: (value, settings) => {
       const size = currentSize(ln.size);
       const color = currentColor();
       if (value === ln.text && size === ln.size && color === ln.color && fontKey() === "auto"
-        && settings.kerning === 0 && settings.leading === null) return null;
+        && settings.kerning === (ln.tracking ?? 0) && settings.leading === (ln.leading ?? null)) return null;
       return [{
         type: "replace_span",
         page: state.page,
@@ -239,9 +241,14 @@ export function startEditor({ bbox, text, size, color, bold, bg, kerning = 0, le
   ed.style.fontSize = `${size / s}px`;
   ed.style.color = color;
   ed.style.fontWeight = bold ? "700" : "400";
-  ed.style.background = bg;
   ed.style.fontFamily = `Helvetica, Arial, ${CJK_FONT}`;
   ed.textContent = text;
+  // The sampled background only covers the line's own place, so a wider preview
+  // draws over its neighbours instead of hiding them.
+  const backdrop = document.createElement("div");
+  backdrop.className = "tl-backdrop";
+  placeBox(backdrop, bbox);
+  backdrop.style.background = bg;
 
   const { panel: spacingPanel, kerningInput, leadingInput } =
     buildSpacingPanel({ kerning, leading, size }, () => {
@@ -260,7 +267,9 @@ export function startEditor({ bbox, text, size, color, bold, bg, kerning = 0, le
     const { kerning: k, leading: l } = readSettings();
     // The preview gaps match the saved ones: thousandths of an em times the size, and the line step.
     ed.style.letterSpacing = `${((k / 1000) * size) / s}px`;
-    ed.style.lineHeight = `${(l === null ? size * AUTO_LINE_HEIGHT : l) / s}px`;
+    // A single line keeps its own box, so the line step only shows once the text has two lines.
+    const stacked = ed.innerText.includes("\n");
+    ed.style.lineHeight = `${((stacked && l !== null) ? l : size * AUTO_LINE_HEIGHT) / s}px`;
   };
   applyPreview();
 
@@ -279,14 +288,17 @@ export function startEditor({ bbox, text, size, color, bold, bg, kerning = 0, le
   tools.addEventListener("mousedown", (e) => {
     if (!e.target.closest("input")) e.preventDefault();
   });
-  $("#stage").append(ed, tools);
+  $("#stage").append(backdrop, ed, tools);
   // The row sits under the box's bottom edge and follows it as the text grows.
   function placeTools() {
     tools.style.left = `${ed.offsetLeft}px`;
     tools.style.top = `${ed.offsetTop + ed.offsetHeight + 4}px`;
   }
   placeTools();
-  ed.addEventListener("input", placeTools);
+  ed.addEventListener("input", () => {
+    applyPreview();
+    placeTools();
+  });
   state.editor = ed;
 
   let done = false;
@@ -297,6 +309,7 @@ export function startEditor({ bbox, text, size, color, bold, bg, kerning = 0, le
     const settings = readSettings();
     ed.remove();
     tools.remove();
+    backdrop.remove();
     if (state.editor === ed) state.editor = null;
     if (!save) return;
     const ops = onCommit(value, settings);

@@ -407,13 +407,15 @@ def _font_model(doc, xref: int):
 # ---------- where each glyph is drawn ----------
 
 class _Glyph:
-    __slots__ = ("origin", "char", "adjust", "known")
+    __slots__ = ("origin", "char", "adjust", "known", "tc", "tfs")
 
-    def __init__(self, origin, char, adjust, known):
+    def __init__(self, origin, char, adjust, known, tc=0.0, tfs=0.0):
         self.origin = origin
         self.char = char
         self.adjust = adjust
         self.known = known
+        self.tc = tc
+        self.tfs = tfs
 
 
 def _walk(doc, ins_list, font_xrefs, page_matrix):
@@ -460,7 +462,7 @@ def _walk(doc, ins_list, font_xrefs, page_matrix):
             if tfs:
                 adjust = -(width + (st["tc"] + (st["tw"] if space else 0.0)) * 1000.0 / tfs)
             indexes.append(len(glyphs))
-            glyphs.append(_Glyph((dev[4], dev[5]), char, adjust, known))
+            glyphs.append(_Glyph((dev[4], dev[5]), char, adjust, known, st["tc"], tfs))
             advance = (width / 1000.0 * tfs + st["tc"] + (st["tw"] if space else 0.0)) * th
             tm = _mul((1, 0, 0, 1, advance, 0), tm)
 
@@ -528,6 +530,30 @@ def _walk(doc, ins_list, font_xrefs, page_matrix):
                     _refuse()
                 show(index, args[-1].value)
     return glyphs, per_ins
+
+
+def _walk_page(doc, page):
+    """Parses one page: its content bytes, instructions, glyphs and per-operator index."""
+    data = page.read_contents()
+    ins_list = _instructions(data)
+    fonts = {}
+    for entry in page.get_fonts():
+        name = entry[4].encode("latin-1", "replace") if isinstance(entry[4], str) else entry[4]
+        fonts[name] = entry[0]
+    glyphs, per_ins = _walk(doc, ins_list, fonts, tuple(page.transformation_matrix))
+    return data, ins_list, glyphs, per_ins
+
+
+def spacing_map(doc: fitz.Document, index: int) -> list:
+    """Letter spacing of every glyph on a page, as (origin, 1/1000 em) pairs.
+
+    A page that cannot be read gives an empty list, so lines just keep their defaults.
+    """
+    try:
+        _, _, glyphs, _ = _walk_page(doc, doc[index])
+    except Exception:
+        return []
+    return [(g.origin, round(g.tc / g.tfs * 1000.0)) for g in glyphs if g.tfs]
 
 
 def _match(targets, glyphs):
@@ -667,13 +693,7 @@ def _remove_line(doc: fitz.Document, index: int, bbox, origin) -> None:
     targets = [(ch["c"], tuple(ch["origin"]), not ch["c"].strip()) for ch in line]
     before = _visible(raw)
 
-    data = page.read_contents()
-    ins_list = _instructions(data)
-    fonts = {}
-    for entry in page.get_fonts():
-        name = entry[4].encode("latin-1", "replace") if isinstance(entry[4], str) else entry[4]
-        fonts[name] = entry[0]
-    glyphs, per_ins = _walk(doc, ins_list, fonts, tuple(page.transformation_matrix))
+    data, ins_list, glyphs, per_ins = _walk_page(doc, page)
     chosen = _match(targets, glyphs)
     removed = set(chosen)
     if not removed:

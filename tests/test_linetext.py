@@ -215,3 +215,50 @@ def test_api_refuses_an_edit_it_cannot_do_safely(server, tmp_path):
     assert reply["detail"] == "this text cannot be changed safely"
     lines_after = call(server.base, "GET", f"/api/docs/{doc}/pages/0/lines")[1]["lines"]
     assert any(ln["text"].startswith("Inside") for ln in lines_after)
+
+
+def _replace_line(server, doc, ln, **extra):
+    from support import call
+    body = {"type": "replace_span", "page": 0, "rect": ln["bbox"], "origin": ln["origin"],
+            "text": ln["text"], "font": "auto", "font_xref": ln["font_xref"],
+            "base_font": ln["base_font"], "size": ln["size"], "color": [0, 0, 0],
+            "align": None, "block": None, "tracking": 0, "leading": None}
+    body.update(extra)
+    status, reply = call(server.base, "POST", f"/api/docs/{doc}/ops", {"ops": [body]})
+    assert status == 200, reply
+
+
+def _lines_now(server, doc):
+    from support import call
+    return call(server.base, "GET", f"/api/docs/{doc}/pages/0/lines")[1]["lines"]
+
+
+def test_saved_letter_spacing_is_read_back(server, tmp_path):
+    import shutil
+    from support import doc_id_of
+    src = tmp_path / "multi.pdf"
+    shutil.copy(fixture("multi.pdf"), src)
+    doc = doc_id_of(server.base, src)
+    ln = next(x for x in _lines_now(server, doc) if x["text"].startswith("Billing"))
+    _replace_line(server, doc, ln, tracking=100)
+    after = next(x for x in _lines_now(server, doc) if x["text"].startswith("Billing"))
+    assert after["tracking"] == 100
+    _replace_line(server, doc, after, tracking=0)
+    back = next(x for x in _lines_now(server, doc) if x["text"].startswith("Billing"))
+    assert back["tracking"] == 0
+
+
+def test_saved_line_spacing_is_read_back(server, tmp_path):
+    from support import doc_id_of
+    src = tmp_path / "para.pdf"
+    fresh = pymupdf.open()
+    fresh.new_page().insert_text((50, 100), "Account 12345", fontname="helv", fontsize=11)
+    fresh.save(src)
+    doc = doc_id_of(server.base, src)
+    ln = _lines_now(server, doc)[0]
+    _replace_line(server, doc, ln, text="Upper line\nLower line", leading=20)
+    lines = _lines_now(server, doc)
+    upper = next(x for x in lines if x["text"] == "Upper line")
+    lower = next(x for x in lines if x["text"] == "Lower line")
+    assert abs(upper["leading"] - 20) < 0.5
+    assert lower["leading"] == upper["leading"]
