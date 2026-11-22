@@ -9,13 +9,13 @@
 <body>
   <header class="topbar">
     <div class="brand" data-i18n="app_title">PDF Studio</div>
-    <label class="btn" for="file-input" data-i18n="open">Open</label>
+    <button id="open-pick" type="button" class="btn" data-i18n="open">Open</button>
     <input id="file-input" type="file" accept="application/pdf" hidden>
-    <label class="btn" for="merge-input" data-i18n="merge">Merge</label>
+    <button id="merge-pick" type="button" class="btn" data-i18n="merge">Merge</button>
     <input id="merge-input" type="file" accept="application/pdf" multiple hidden>
     <button id="undo" class="btn" data-i18n="undo">Undo</button>
     <button id="redo" class="btn" data-i18n="redo">Redo</button>
-    <select id="export" class="btn">
+    <select id="export" class="btn" data-i18n-title="export" title="Export">
       <option value="" data-i18n="export">Export</option>
       <option value="pdf" data-i18n="export_pdf">PDF</option>
       <option value="readonly" data-i18n="export_readonly">Read-only PDF…</option>
@@ -27,7 +27,7 @@
     <button id="delete-doc" class="btn" data-i18n="delete_doc">Delete</button>
     <div class="spacer"></div>
     <button id="about-open" class="btn" data-i18n="about_open">About</button>
-    <select id="lang">
+    <select id="lang" data-i18n-title="language" title="Language">
       <option value="en">English</option>
       <option value="zh-CN">简体中文</option>
       <option value="ja">日本語</option>
@@ -59,7 +59,7 @@
         <button class="tool" data-tool="image" data-i18n="tool_image">Image</button>
         <button class="tool" data-tool="redact" data-i18n="tool_redact">Redact</button>
         <span class="sep"></span>
-        <select id="font"></select>
+        <select id="font" data-i18n-title="font_family" title="Font"></select>
         <button id="size-down" class="btn small" data-i18n-title="size_down" title="Smaller">A−</button>
         <input id="size" type="number" min="1" max="400" step="0.5" value="12" list="size-list" data-i18n-title="font_size" title="Font size">
         <datalist id="size-list"></datalist>
@@ -111,28 +111,28 @@
   </div>
 
   <input id="image-input" type="file" accept="image/png,image/jpeg" hidden>
-  <div id="stopped" class="stopped" hidden>
+  <div id="stopped" class="stopped" role="alertdialog" aria-modal="true" aria-labelledby="stopped-title" hidden>
     <div class="stopped-box">
-      <h2 data-i18n="stopped_title">Server stopped</h2>
+      <h2 id="stopped-title" data-i18n="stopped_title">Server stopped</h2>
       <p data-i18n="stopped_body">PDF Studio has stopped. You can close this tab.</p>
     </div>
   </div>
-  <div id="font-dialog" class="modal" hidden>
+  <div id="font-dialog" class="modal" role="dialog" aria-modal="true" aria-labelledby="font-title" hidden>
     <div class="modal-box wide">
-      <h2 data-i18n="font_manager">Font manager</h2>
+      <h2 id="font-title" data-i18n="font_manager">Font manager</h2>
       <div id="font-list" class="font-list"></div>
       <div class="modal-actions">
-        <label class="btn" for="font-input" data-i18n="upload_font">Upload font</label>
+        <button id="font-pick" type="button" class="btn" data-i18n="upload_font">Upload font</button>
         <input id="font-input" type="file" accept=".ttf" multiple hidden>
         <span class="spacer"></span>
-        <button id="font-close" class="btn" data-i18n="close">Close</button>
+        <button id="font-close" type="button" class="btn" data-cancel data-i18n="close">Close</button>
       </div>
     </div>
   </div>
 
-  <div id="readonly-dialog" class="modal" hidden>
+  <div id="readonly-dialog" class="modal" role="dialog" aria-modal="true" aria-labelledby="readonly-title" hidden>
     <form id="readonly-form" class="modal-box">
-      <h2 data-i18n="readonly_title">Export read-only PDF</h2>
+      <h2 id="readonly-title" data-i18n="readonly_title">Export read-only PDF</h2>
       <p class="hint" data-i18n="readonly_hint">Like Acrobat's Restrict Editing and Printing.</p>
       <label class="field"><span data-i18n="permissions_password">Permissions password</span>
         <input id="ro-owner" type="password" autocomplete="new-password" required></label>
@@ -157,15 +157,15 @@
       <p id="ro-error" class="error" hidden></p>
       <div class="modal-actions">
         <span class="spacer"></span>
-        <button type="button" id="ro-cancel" class="btn" data-i18n="cancel">Cancel</button>
+        <button type="button" id="ro-cancel" class="btn" data-cancel data-i18n="cancel">Cancel</button>
         <button type="submit" class="btn primary" data-i18n="export">Export</button>
       </div>
     </form>
   </div>
 
-  <div id="stamp-dialog" class="modal" hidden>
+  <div id="stamp-dialog" class="modal" role="dialog" aria-modal="true" aria-labelledby="stamp-title" hidden>
     <form id="stamp-form" class="modal-box">
-      <h2 data-i18n="stamp_title">Header, footer and watermark</h2>
+      <h2 id="stamp-title" data-i18n="stamp_title">Header, footer and watermark</h2>
       <p class="hint" data-i18n="stamp_hint">Use {page}, {total} and {name} in the text.</p>
       <label class="field"><span data-i18n="stamp_text">Text</span>
         <input id="st-text" type="text" maxlength="200" value="{page} / {total}" required></label>
@@ -197,43 +197,43 @@
       <p id="st-error" class="error" hidden></p>
       <div class="modal-actions">
         <span class="spacer"></span>
-        <button type="button" id="st-cancel" class="btn" data-i18n="cancel">Cancel</button>
+        <button type="button" id="st-cancel" class="btn" data-cancel data-i18n="cancel">Cancel</button>
         <button type="submit" class="btn primary" data-i18n="stamp_apply">Apply</button>
       </div>
     </form>
   </div>
 
-  <div id="toc-dialog" class="modal" hidden>
+  <div id="toc-dialog" class="modal" role="dialog" aria-modal="true" aria-labelledby="toc-title" hidden>
     <div class="modal-box wide">
-      <h2 data-i18n="toc_title">Bookmarks</h2>
+      <h2 id="toc-title" data-i18n="toc_title">Bookmarks</h2>
       <p class="hint" data-i18n="toc_hint">Each bookmark jumps to a page. Level 2 sits under the level above it.</p>
       <div id="toc-rows" class="rows"></div>
       <p id="toc-error" class="error" hidden></p>
       <div class="modal-actions">
         <button type="button" id="toc-add" class="btn" data-i18n="toc_add">Add bookmark</button>
         <span class="spacer"></span>
-        <button type="button" id="toc-cancel" class="btn" data-i18n="cancel">Cancel</button>
+        <button type="button" id="toc-cancel" class="btn" data-cancel data-i18n="cancel">Cancel</button>
         <button type="button" id="toc-save" class="btn primary" data-i18n="save">Save</button>
       </div>
     </div>
   </div>
 
-  <div id="annots-dialog" class="modal" hidden>
+  <div id="annots-dialog" class="modal" role="dialog" aria-modal="true" aria-labelledby="annots-title" hidden>
     <div class="modal-box wide">
-      <h2 data-i18n="annots_title">Comments</h2>
+      <h2 id="annots-title" data-i18n="annots_title">Comments</h2>
       <p class="hint" data-i18n="annots_hint">Edit the text of a comment or remove it. Changes can be undone.</p>
       <div id="annots-rows" class="rows"></div>
       <p id="annots-error" class="error" hidden></p>
       <div class="modal-actions">
         <span class="spacer"></span>
-        <button type="button" id="annots-close" class="btn" data-i18n="close">Close</button>
+        <button type="button" id="annots-close" class="btn" data-cancel data-i18n="close">Close</button>
       </div>
     </div>
   </div>
 
-  <div id="about-dialog" class="modal" hidden>
+  <div id="about-dialog" class="modal" role="dialog" aria-modal="true" aria-labelledby="about-title" hidden>
     <div class="modal-box about-box">
-      <h2 data-i18n="about_title">About PDF Studio</h2>
+      <h2 id="about-title" data-i18n="about_title">About PDF Studio</h2>
       <div class="about-brand">
         <strong>PDF Studio</strong>
         <span id="about-version" class="hint"></span>
@@ -270,26 +270,26 @@
       </section>
       <div class="modal-actions">
         <span class="spacer"></span>
-        <button type="button" id="about-close" class="btn" data-i18n="close">Close</button>
+        <button type="button" id="about-close" class="btn" data-cancel data-i18n="close">Close</button>
       </div>
     </div>
   </div>
 
-  <div id="password-dialog" class="modal" hidden>
+  <div id="password-dialog" class="modal" role="dialog" aria-modal="true" aria-labelledby="password-title" hidden>
     <form id="password-form" class="modal-box">
-      <h2 data-i18n="password_title">Password required</h2>
+      <h2 id="password-title" data-i18n="password_title">Password required</h2>
       <p id="pw-hint" class="hint"></p>
       <label class="field"><span data-i18n="password_label">Password</span>
         <input id="pw-input" type="password" autocomplete="current-password"></label>
       <div class="modal-actions">
         <span class="spacer"></span>
-        <button type="button" id="pw-cancel" class="btn" data-i18n="cancel">Cancel</button>
+        <button type="button" id="pw-cancel" class="btn" data-cancel data-i18n="cancel">Cancel</button>
         <button type="submit" class="btn primary" data-i18n="password_open">Open</button>
       </div>
     </form>
   </div>
 
-  <div id="toast" class="toast"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <div id="text-menu" class="ctx-menu" hidden>
     <button type="button" data-text="delete" class="danger" data-i18n="text_delete">Delete text</button>
   </div>

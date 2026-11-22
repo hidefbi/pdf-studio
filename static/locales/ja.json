@@ -92,6 +92,8 @@
   "size_down": "フォントサイズを小さく",
   "size_up": "フォントサイズを大きく",
   "font_size": "フォントサイズ",
+  "language": "言語",
+  "font_family": "フォント",
   "custom_color": "カスタムカラー",
   "editor_save": "保存 (Enter)",
   "editor_cancel": "キャンセル (Esc)",

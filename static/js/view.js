@@ -67,6 +67,7 @@ export function renderPageLabel() {
     return;
   }
   $("#page-label").textContent = t("page_of", { n: state.page + 1, total: state.info.pages.length });
+  thumbLabels();
 }
 
 export function renderThumbs() {
@@ -78,13 +79,28 @@ export function renderThumbs() {
     img.className = "thumb";
     img.loading = "lazy";
     img.alt = "";
+    img.tabIndex = 0;
+    img.setAttribute("role", "button");
     img.src = `/api/docs/${state.docId}/pages/${i}.png?zoom=${0.4 * RENDER_SCALE}&v=${state.info.version}`;
-    img.onclick = () => {
+    const go = () => {
       state.page = i;
       renderPage();
     };
+    img.onclick = go;
+    img.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      e.preventDefault();
+      go();
+    });
     box.appendChild(img);
   });
+  thumbLabels();
+}
+
+// Thumbnails are buttons for screen readers, so each one names its page. Called again on a language change.
+export function thumbLabels() {
+  const total = state.info.pages.length;
+  document.querySelectorAll(".thumb").forEach((el, i) => el.setAttribute("aria-label", t("page_of", { n: i + 1, total })));
 }
 
 export function syncOverlay() {

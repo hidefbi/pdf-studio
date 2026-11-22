@@ -92,6 +92,8 @@
   "size_down": "글꼴 크기 줄이기",
   "size_up": "글꼴 크기 키우기",
   "font_size": "글꼴 크기",
+  "language": "언어",
+  "font_family": "글꼴",
   "custom_color": "사용자 지정 색",
   "editor_save": "저장 (Enter)",
   "editor_cancel": "취소 (Esc)",

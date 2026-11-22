@@ -92,6 +92,8 @@
   "size_down": "减小字号",
   "size_up": "增大字号",
   "font_size": "字号",
+  "language": "语言",
+  "font_family": "字体",
   "custom_color": "自定义颜色",
   "editor_save": "确认（Enter）",
   "editor_cancel": "取消（Esc）",

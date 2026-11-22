@@ -81,6 +81,7 @@ export function toast(message, isError = false) {
   const el = $("#toast");
   el.textContent = message;
   el.className = isError ? "toast error show" : "toast show";
+  el.setAttribute("aria-live", isError ? "assertive" : "polite");
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => (el.className = "toast"), 3500);
 }
@@ -121,7 +122,10 @@ export async function setLocale(lang) {
   localStorage.setItem(LANG_KEY, lang);
   document.documentElement.lang = lang;
   document.querySelectorAll("[data-i18n]").forEach((el) => (el.textContent = t(el.dataset.i18n)));
-  document.querySelectorAll("[data-i18n-title]").forEach((el) => (el.title = t(el.dataset.i18nTitle)));
+  document.querySelectorAll("[data-i18n-title]").forEach((el) => {
+    el.title = t(el.dataset.i18nTitle);
+    el.setAttribute("aria-label", el.title);
+  });
   document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => (el.placeholder = t(el.dataset.i18nPlaceholder)));
   $("#lang").value = lang;
   renderFontSelect();

@@ -92,6 +92,8 @@
   "size_down": "Smaller font size",
   "size_up": "Larger font size",
   "font_size": "Font size",
+  "language": "Language",
+  "font_family": "Font",
   "custom_color": "Custom color",
   "editor_save": "Save (Enter)",
   "editor_cancel": "Cancel (Esc)",

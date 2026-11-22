@@ -15,6 +15,8 @@ export function bindEvents() {
   document.addEventListener("pointerdown", onPagePress, true);
 
   $("#lang").addEventListener("change", (e) => runAction(() => setLocale(e.target.value)));
+  $("#open-pick").addEventListener("click", () => $("#file-input").click());
+  $("#merge-pick").addEventListener("click", () => $("#merge-input").click());
 
   $("#file-input").addEventListener("change", (e) => {
     const file = e.target.files[0];
@@ -87,6 +89,7 @@ export function bindEvents() {
   );
 
   $("#fonts-btn").addEventListener("click", openFontDialog);
+  $("#font-pick").addEventListener("click", () => $("#font-input").click());
   $("#font-close").addEventListener("click", closeFontDialog);
   $("#font-dialog").addEventListener("click", (e) => {
     if (e.target.id === "font-dialog") closeFontDialog();
@@ -102,12 +105,6 @@ export function bindEvents() {
   });
   $("#readonly-form").addEventListener("submit", exportReadonly);
   $("#ro-cancel").addEventListener("click", closeReadonlyDialog);
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-      closeFontDialog();
-      closeReadonlyDialog();
-    }
-  });
 
   // With no selection, the font only applies to new text.
   $("#font").addEventListener("change", () => {

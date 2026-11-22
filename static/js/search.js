@@ -16,12 +16,15 @@ export async function runSearch(query) {
   }
   res.results.forEach((hit) => {
     const li = document.createElement("li");
-    li.textContent = t("hit_on_page", { n: hit.page + 1 });
-    li.onclick = () => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = t("hit_on_page", { n: hit.page + 1 });
+    button.onclick = () => {
       state.page = hit.page;
       state.hit = hit;
       renderPage();
     };
+    li.appendChild(button);
     list.appendChild(li);
   });
 }
