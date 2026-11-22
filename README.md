@@ -23,7 +23,7 @@ It started as a way to change a few lines in a PDF without paying for a full des
 - Add PNG or JPEG images, then move and resize them.
 - Highlight, underline, strike out, draw rectangles, and draw freehand lines.
 - Add sticky notes and comments.
-- Redact an area to remove the text under it.
+- Redact an area. The text, pictures, drawings and comments inside it are erased, and the undo history of that file is cleared.
 
 **Pages**
 
@@ -31,7 +31,7 @@ It started as a way to change a few lines in a PDF without paying for a full des
 - Merge several PDFs into one.
 - Add headers, footers, and page numbers, or a watermark.
 - Edit bookmarks.
-- Undo and redo. The history is saved with the document, so it still works after a reload.
+- Undo and redo. The history is saved with the document, so it still works after a reload. Redacting clears it.
 
 ![Selecting a line](docs/screenshots/selection.png)
 
@@ -127,6 +127,7 @@ Then run the tests.
 - Large files take longer to render. Pages are cached, so scrolling gets faster after the first view.
 - A document can have up to 2000 pages. A single page can be drawn at about 50 million pixels at most, so a very large page needs a lower zoom for rendering, PNG export and OCR.
 - Changing or moving a line works on simple fonts and two-byte fonts with Identity-H or UTF-16 encoding. Text inside form objects, Type 3 fonts and other encodings can't be changed that way. The app refuses those edits and leaves the page as it was.
+- Redaction removes a drawing only when the area covers all of it. A drawing that crosses the edge of the area stays in the file and shows outside the area. If that matters, remove it with another tool first.
 - When a PDF is imported, its JavaScript and launch actions are removed. Links and attachments are kept. Files added before this change keep their scripts.
 
 ## Project layout

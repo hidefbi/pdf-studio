@@ -91,7 +91,8 @@ export async function finishTool(drag) {
     case "redact": {
       if (tiny) return;
       if (!confirm(t("confirm_redact"))) return;
-      await applyOps([{ type: "replace_text", page, rect, text: "" }]);
+      await applyOps([{ type: "redact", page, rect }]);
+      toast(t("redact_done"));
       break;
     }
     case "note": {

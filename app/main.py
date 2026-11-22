@@ -301,13 +301,14 @@ def _ocr_scale(page: fitz.Page) -> float:
     return scale
 
 
-def _mutate(doc_id: str, action: Callable[[fitz.Document], Any]) -> Any:
-    """Snapshot first, so the edit can be undone."""
+def _mutate(doc_id: str, action: Callable[[fitz.Document], Any], keep_history: bool = True) -> Any:
+    """Snapshot first, so the edit can be undone. Redaction skips that, see _purge_history."""
     path = _doc_dir(doc_id)
     with _lock:
         meta = _read_meta(path)
         snap = path / "history" / f"{meta['history'] + 1:06d}.pdf"
-        shutil.copyfile(path / "current.pdf", snap)
+        if keep_history:
+            shutil.copyfile(path / "current.pdf", snap)
         tmp = path / "current.tmp"
         doc = fitz.open(path / "current.pdf")
         try:
@@ -327,6 +328,9 @@ def _mutate(doc_id: str, action: Callable[[fitz.Document], Any]) -> Any:
         finally:
             doc.close()
         os.replace(tmp, path / "current.pdf")
+        if not keep_history:
+            _purge_history(path, meta)
+            return result
         _clear_redo(path)
         meta["history"] += 1
         meta["redo"] = 0
@@ -345,6 +349,19 @@ def _clear_redo(path: Path) -> None:
     redo.mkdir(exist_ok=True)
     for item in redo.glob("*.pdf"):
         item.unlink(missing_ok=True)
+
+
+def _purge_history(path: Path, meta: dict) -> None:
+    """Drop every undo and redo copy, they would still hold the erased text.
+
+    Files are unlinked, not overwritten.
+    """
+    for folder in ("history", "redo"):
+        for item in (path / folder).glob("*.pdf"):
+            item.unlink(missing_ok=True)
+    meta.update(history=0, floor=0, redo=0, version=meta.get("version", 0) + 1)
+    _write_meta(path, meta)
+    _forget_doc(path.name)
 
 
 # ---------- picture placement in the page content ----------
@@ -781,75 +798,29 @@ def _place_text(page: fitz.Page, doc: fitz.Document, rect: fitz.Rect, text: str,
     return "collide" if collide else "ok"
 
 
-def _char_boxes(page: fitz.Page, rect: fitz.Rect) -> list:
-    """Only glyphs centered in rect count; neighbors touching its edge stay put."""
-    boxes = []
-    data = page.get_text("rawdict")
-    for block in data.get("blocks", []):
-        for line in block.get("lines", []):
-            for span in line.get("spans", []):
-                for ch in span.get("chars", []):
-                    b = fitz.Rect(ch["bbox"])
-                    if b.is_empty:
-                        continue
-                    center = fitz.Point((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2)
-                    if rect.contains(center):
-                        boxes.append(b)
-    return boxes
+REDACT_PAD = 0.5  # points; a drawing is removed only when the cover fully contains it
 
 
-def _paint_pieces(shapes: list, box: fitz.Rect, fallback) -> list:
-    """Split fills keep a shading edge intact; one color would leave a wrong patch."""
-    # Stacked pieces would show faint seams at anti-aliased edges, so one shape wins here.
-    top = None  # the topmost shape that overlaps the glyph box
-    for shape_rect, fill in shapes:
-        if _overlap_area(shape_rect, box) > 0:
-            top = (shape_rect, fill)
-    if top is not None and top[0].contains(box):
-        return [(box, top[1])]
-    # Pixels are read only when no shape lies under the glyph; rendering per glyph is slow.
-    under = next(((r, f) for r, f in shapes if _overlap_area(r, box) > 0), None)
-    base = under[1] if under is not None else fallback
-    pieces = [(box, base)]
-    for shape_rect, fill in shapes:
-        common = fitz.Rect(shape_rect) & box
-        if common.is_empty or common.width < 0.1 or common.height < 0.1:
-            continue
-        pieces.append((common, fill))
-    return pieces
+def _redact_area(page: fitz.Page, rect: fitz.Rect) -> None:
+    """Erase text, picture pixels, drawings and comments inside the area.
 
-
-MIN_BACKDROP_SIDE_PT = 16  # glyph-sized patches left by earlier erasing are narrower or smaller than this
-MIN_BACKDROP_AREA_PT = 2000
-
-
-def _filled_shapes(page: fitz.Page) -> list:
-    """Glyph-sized patches from earlier erases are skipped, or each edit would grow the work."""
-    shapes = []
-    for dr in page.get_drawings():
-        fill = dr.get("fill")
-        if fill is None or len(fill) != 3:
-            continue
-        r = fitz.Rect(dr["rect"])
-        if r.is_empty or min(r.width, r.height) < MIN_BACKDROP_SIDE_PT or r.width * r.height < MIN_BACKDROP_AREA_PT:
-            continue
-        shapes.append((r, tuple(fill)))
-    return shapes
-
-
-def _erase(page: fitz.Page, rect: fitz.Rect) -> None:
-    """Each glyph gets its own fill, so tinted backgrounds do not show a wrong patch."""
-    boxes = _char_boxes(page, rect)
-    if not boxes:
-        return
-    shapes = _filled_shapes(page)
-    fallback = _bg_color(page, rect)  # for glyphs with no drawn shape under them, one sample per edit
-    for b in boxes:
-        for piece, color in _paint_pieces(shapes, b, fallback):
-            page.add_redact_annot(piece, fill=color)
+    A drawing only goes if the area covers all of it, so one crossing the edge stays.
+    """
+    area = rect & page.rect
+    if area.is_empty or area.width < 1 or area.height < 1:
+        raise ValueError("redaction area is too small")
+    for annot in list(page.annots() or []):
+        if area.intersects(annot.rect):
+            page.delete_annot(annot)
+    for widget in list(page.widgets() or []):
+        if area.intersects(widget.rect):
+            page.delete_widget(widget)
+    cover = (area + (-REDACT_PAD, -REDACT_PAD, REDACT_PAD, REDACT_PAD)) & page.rect
+    page.add_redact_annot(cover, fill=_bg_color(page, area))
     page.apply_redactions(
-        images=fitz.PDF_REDACT_IMAGE_NONE,
-        graphics=fitz.PDF_REDACT_LINE_ART_NONE,
+        images=fitz.PDF_REDACT_IMAGE_PIXELS,
+        graphics=fitz.PDF_REDACT_LINE_ART_REMOVE_IF_COVERED,
+        text=fitz.PDF_REDACT_TEXT_REMOVE,
     )
 
 
@@ -933,16 +904,17 @@ def _apply_op(doc: fitz.Document, op: Op) -> Optional[str]:
                              leading=_leading_value(op.leading))
         return None if status == "ok" else f"page {op.page + 1}: moved text overlaps nearby content"
 
-    if op.type in ("text", "replace_text", "replace_span"):
+    if op.type == "redact":
+        _redact_area(page, fitz.Rect(op.rect))
+        return None
+
+    if op.type in ("text", "replace_span"):
         tracking = _tracking_value(op.tracking, op.size)  # validate before anything is erased
         leading = _leading_value(op.leading)
         rect = fitz.Rect(op.rect)
         if op.type == "replace_span":
             _erase_line(doc, op)
             page = doc[op.page]
-        elif op.type == "replace_text":
-            # The redact tool clears a whole area on purpose, so it keeps the area erase.
-            _erase(page, rect)
         if not op.text:
             return None
         origin = op.origin if op.type == "replace_span" else None
@@ -1427,7 +1399,8 @@ def apply_ops(doc_id: str, body: OpsRequest):
     def action(doc: fitz.Document):
         warnings = [w for w in (_apply_op(doc, op) for op in body.ops) if w]
         return {"ok": True, "warnings": warnings, "pages": doc.page_count}
-    return _mutate(doc_id, action)
+    erases = any(op.type == "redact" for op in body.ops)
+    return _mutate(doc_id, action, keep_history=not erases)
 
 
 def _history_state(meta: dict) -> dict:
