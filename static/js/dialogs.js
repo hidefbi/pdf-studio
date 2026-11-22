@@ -1,4 +1,4 @@
-import { $, api, getJson, postJson, state, t, toast } from "./core.js";
+import { $, api, errorText, getJson, postJson, state, t, toast } from "./core.js";
 import { renderAll } from "./view.js";
 import { download, runAction } from "./files.js";
 
@@ -59,7 +59,7 @@ export async function submitStamp(event) {
     renderAll();
     toast(t("stamp_done"));
   } catch (err) {
-    showToolError("#st-error", err.message);
+    showToolError("#st-error", errorText(err));
   }
 }
 
@@ -125,7 +125,7 @@ export async function saveToc() {
     $("#toc-dialog").hidden = true;
     toast(t("toc_saved"));
   } catch (err) {
-    showToolError("#toc-error", err.message);
+    showToolError("#toc-error", errorText(err));
   }
 }
 

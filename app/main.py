@@ -42,6 +42,7 @@ FONT_MAGIC = (b"\x00\x01\x00\x00", b"true", b"OTTO")
 ACTIVE_MARKERS = ("/JavaScript", "/Launch")
 MAX_UPLOAD_BYTES = 500 * 1024 * 1024
 HISTORY_LIMIT = 30
+HISTORY_MAX_BYTES = int(os.environ.get("PDF_STUDIO_HISTORY_BYTES") or 512 * 1024 * 1024)  # undo copies per document
 UPLOAD_CHUNK = 1024 * 1024
 MAX_RENDER_SCALE = 4.0
 RENDER_CACHE_BYTES = 256 * 1024 * 1024
@@ -218,7 +219,7 @@ def _open_pdf_file(path: Path, password: str = "") -> tuple[fitz.Document, bool]
         raise HTTPException(400, "PDF has no pages")
     if doc.page_count > MAX_PAGES:
         doc.close()
-        raise HTTPException(413, f"PDF has more than {MAX_PAGES} pages")
+        raise HTTPException(413, "PDF has too many pages")
     return doc, locked
 
 
@@ -335,13 +336,19 @@ def _mutate(doc_id: str, action: Callable[[fitz.Document], Any], keep_history: b
         meta["history"] += 1
         meta["redo"] = 0
         floor = meta.get("floor", 0)
-        while meta["history"] - floor > HISTORY_LIMIT:
+        while meta["history"] - floor > HISTORY_LIMIT or (
+            meta["history"] > floor and _history_bytes(path) > HISTORY_MAX_BYTES
+        ):
             floor += 1
             (path / "history" / f"{floor:06d}.pdf").unlink(missing_ok=True)
         meta["floor"] = floor
         meta["version"] = meta.get("version", 0) + 1
         _write_meta(path, meta)
         return result
+
+
+def _history_bytes(path: Path) -> int:
+    return sum(item.stat().st_size for item in (path / "history").glob("*.pdf"))
 
 
 def _clear_redo(path: Path) -> None:
@@ -566,7 +573,7 @@ def _resolve_font(page: fitz.Page, key: str):
         return key, fitz.Font(fontname=key)
     entry = next((f for f in _load_fonts() if f["id"] == key), None)
     if entry is None:
-        raise ValueError(f"unknown font: {key}")
+        raise ValueError("unknown font")
     alias = f"U{key}"
     path = str(FONTS_DIR / entry["file"])
     page.insert_font(fontname=alias, fontfile=path)
@@ -748,7 +755,7 @@ def _tracking_value(value: Optional[float], size: float) -> float:
     if value is None:
         return 0.0
     if not TRACKING_MIN <= value <= TRACKING_MAX:
-        raise ValueError(f"letter spacing must be from {TRACKING_MIN:g} to {TRACKING_MAX:g} (1/1000 em)")
+        raise ValueError("letter spacing is out of range")
     return float(value) / 1000.0 * size
 
 
@@ -831,7 +838,7 @@ def _erase_line(doc: fitz.Document, op: Op) -> None:
 
 def _page_at(doc: fitz.Document, index: int) -> fitz.Page:
     if not 0 <= index < doc.page_count:
-        raise ValueError(f"page {index + 1} does not exist")
+        raise ValueError("page does not exist")
     return doc[index]
 
 
@@ -844,7 +851,7 @@ def _leading_value(value: Optional[float]) -> Optional[float]:
     if value is None:
         return None
     if not LEADING_MIN <= value <= LEADING_MAX:
-        raise ValueError(f"line spacing must be from {LEADING_MIN:g} to {LEADING_MAX:g} pt")
+        raise ValueError("line spacing is out of range")
     return float(value)
 
 
@@ -868,7 +875,7 @@ def _apply_op(doc: fitz.Document, op: Op) -> Optional[str]:
         return None
 
     if op.rect is None and op.type != "ink":
-        raise ValueError(f"{op.type} needs a rect")
+        raise ValueError("operation needs a rect")
 
     if op.type == "ocr_text":
         # Invisible text layer, so the scan looks unchanged.
@@ -1016,7 +1023,7 @@ def _apply_op(doc: fitz.Document, op: Op) -> Optional[str]:
         page.insert_image(fitz.Rect(op.rect), stream=data, keep_proportion=True, overlay=True)
         return None
 
-    raise ValueError(f"unknown operation: {op.type}")
+    raise ValueError("unknown operation")
 
 
 # ---------- documents ----------
@@ -1508,7 +1515,7 @@ def merge(body: MergeRequest):
             try:
                 out.insert_pdf(src)
                 if out.page_count > MAX_PAGES:
-                    raise HTTPException(413, f"merged PDF would have more than {MAX_PAGES} pages")
+                    raise HTTPException(413, "merged PDF has too many pages")
             finally:
                 src.close()
         data = out.tobytes(garbage=3, deflate=True)
@@ -1543,7 +1550,7 @@ def export(doc_id: str, fmt: str,
     pdf_path = path / "current.pdf"
 
     if fmt == "pdf":
-        return _download(pdf_path.read_bytes(), "application/pdf", f"{stem}.pdf")
+        return _file_download(pdf_path, "application/pdf", f"{stem}.pdf")
     if fmt == "docx":
         data, name = _to_docx(pdf_path, stem)
         return _download(data, DOCX_MEDIA, name)
@@ -1586,6 +1593,15 @@ def export(doc_id: str, fmt: str,
 def _download(data: bytes, media: str, filename: str) -> Response:
     return Response(
         data,
+        media_type=media,
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
+
+
+def _file_download(path: Path, media: str, filename: str) -> FileResponse:
+    # Streamed from disk, so a big PDF is not read into memory first.
+    return FileResponse(
+        path,
         media_type=media,
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
     )
@@ -1670,7 +1686,7 @@ class AnnotPatch(BaseModel):
 
 def _insert_blank(doc: fitz.Document, after: int) -> int:
     if doc.page_count >= MAX_PAGES:
-        raise HTTPException(413, f"document already has {MAX_PAGES} pages")
+        raise HTTPException(413, "document has too many pages")
     ref_index = max(after, 0)
     _check_index(doc, ref_index)
     ref = doc[ref_index]

@@ -50,7 +50,9 @@ export async function api(path, options = {}) {
     try {
       message = (await res.json()).detail || message;
     } catch (_) { /* keep status text */ }
-    const error = new Error(typeof message === "string" ? message : JSON.stringify(message));
+    // Validation errors come back as a list. A plain line is enough for those.
+    if (typeof message !== "string") message = "invalid request";
+    const error = new Error(message);
     error.status = res.status;
     throw error;
   }
@@ -83,8 +85,14 @@ export function toast(message, isError = false) {
   toast.timer = setTimeout(() => (el.className = "toast"), 3500);
 }
 
+// Server messages are English text. Each one has a translation in the locale files,
+// keyed by the same text, so t() falls back to the English when a translation is missing.
+export function errorText(err) {
+  return t(err.message || String(err));
+}
+
 export function showError(err) {
-  toast(err.message || String(err), true);
+  toast(errorText(err), true);
 }
 
 export function hexToRgb(hex) {

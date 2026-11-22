@@ -5,7 +5,7 @@ PDF Studio runs entirely on your computer. This page explains what the app keeps
 ## What stays on your computer
 
 - **Your documents.** Every PDF you open is copied into the `data` folder inside the project (or into the folder set by `PDF_STUDIO_DATA`). The app needs this copy to edit the file and to keep undo and redo working.
-- **Undo history.** Earlier versions of each document are kept in the same folder, so undo still works after you close the tab. The app keeps the last 30 steps. Redacting an area deletes all of these older copies, so the erased content is not kept. The files are deleted, not overwritten.
+- **Undo history.** Earlier versions of each document are kept in the same folder, so undo still works after you close the tab. The app keeps the last 30 steps, and at most 512 MB of older copies per document. Large files keep fewer steps. Redacting an area deletes all of these older copies, so the erased content is not kept. The files are deleted, not overwritten.
 - **Fonts you upload.** They are stored in `data/fonts`.
 - **Exported files.** Files you export are sent to your browser as a download. The app does not keep a copy of them.
 - **Permissions.** The folders and files the app makes can be read only by your macOS user account.

@@ -27,13 +27,23 @@ export function showStopped() {
   $("#stopped").hidden = false;
 }
 
+// One lost beat is normal (a sleeping laptop, a busy disk). Only a run of misses means the server is gone.
+const HEARTBEAT_MISSES = 3;
+let heartbeatMisses = 0;
+
 export function sendHeartbeat() {
   fetch("/api/heartbeat", {
     method: "POST",
     headers: API_HEADERS,
     keepalive: true,
     body: JSON.stringify({ id: CLIENT_ID }),
-  }).catch(showStopped);
+  }).then((res) => {
+    if (!res.ok) throw new Error(String(res.status));
+    heartbeatMisses = 0;
+  }).catch(() => {
+    heartbeatMisses += 1;
+    if (heartbeatMisses >= HEARTBEAT_MISSES) showStopped();
+  });
 }
 
 export function startLifecycle() {

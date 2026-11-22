@@ -126,6 +126,7 @@ Then run the tests.
 - Python 3.9 gets PyMuPDF 1.26.5 instead of 2.1, which only supports 3.11 and newer. The tests pass with both. Most test runs were on Python 3.13.
 - Large files take longer to render. Pages are cached, so scrolling gets faster after the first view.
 - A document can have up to 2000 pages. A single page can be drawn at about 50 million pixels at most, so a very large page needs a lower zoom for rendering, PNG export and OCR.
+- Undo keeps up to 30 steps and 512 MB of older copies per document. A very large file keeps fewer steps.
 - Changing or moving a line works on simple fonts and two-byte fonts with Identity-H or UTF-16 encoding. Text inside form objects, Type 3 fonts and other encodings can't be changed that way. The app refuses those edits and leaves the page as it was.
 - Redaction removes a drawing only when the area covers all of it. A drawing that crosses the edge of the area stays in the file and shows outside the area. If that matters, remove it with another tool first.
 - When a PDF is imported, its JavaScript and launch actions are removed. Links and attachments are kept. Files added before this change keep their scripts.
