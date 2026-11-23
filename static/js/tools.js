@@ -46,7 +46,13 @@ export async function applyOps(ops) {
   const res = await postJson(`/api/docs/${state.docId}/ops`, { ops });
   if (res.warnings && res.warnings.length) toast(t("overflow_warning"), true);
   state.info = await getJson(`/api/docs/${state.docId}`);
-  renderAll();
+  renderAll(pagesTouched(ops));
+}
+
+// Only the pages an edit names need a new thumbnail. Page moves and deletes redraw them all.
+function pagesTouched(ops) {
+  if (ops.some((op) => RELAYOUT_OPS.has(op.type))) return null;
+  return [...new Set(ops.map((op) => op.page))];
 }
 
 export async function finishTool(drag) {

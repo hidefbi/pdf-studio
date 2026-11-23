@@ -18,7 +18,7 @@ export function clampPage() {
   state.page = Math.max(0, Math.min(state.page, count - 1));
 }
 
-export function renderAll() {
+export function renderAll(changedPages = null) {
   const hasDoc = Boolean(state.info);
   $("#empty").hidden = hasDoc;
   $("#stage").hidden = !hasDoc;
@@ -28,11 +28,16 @@ export function renderAll() {
   $("#delete-doc").disabled = !hasDoc;
   ["#insert-blank", "#stamp-open", "#toc-open", "#annots-open"].forEach((sel) => ($(sel).disabled = !hasDoc));
   if (hasDoc) clampPage();
-  // Thumbnails follow the version, so an undo redraws them too.
-  const key = hasDoc ? `${state.docId}:${state.info.version}:${state.info.pages.length}` : "";
-  if (key !== state.thumbsKey) {
+  // Undo, redo and page changes redraw every thumbnail. A normal edit only redraws the pages it touched.
+  const key = hasDoc ? `${state.docId}:${state.info.pages.length}` : "";
+  if (changedPages === null || key !== state.thumbsKey) {
     renderThumbs();
     state.thumbsKey = key;
+  } else {
+    changedPages.forEach((i) => {
+      const el = document.querySelectorAll(".thumb")[i];
+      if (el) el.src = thumbUrl(i);
+    });
   }
   // A page added or removed under the selection makes it point at the wrong page.
   const layout = hasDoc ? `${state.docId}:${state.info.pages.length}` : "";
@@ -63,7 +68,7 @@ export function renderPage() {
   const scale = Math.min(MAX_RENDER_SCALE, state.zoom * RENDER_SCALE);
   img.src = `/api/docs/${state.docId}/pages/${state.page}.png?zoom=${scale}&v=${state.info.version}`;
   const thumb = document.querySelectorAll(".thumb")[state.page];
-  if (thumb) thumb.src = `/api/docs/${state.docId}/pages/${state.page}.png?zoom=${0.4 * RENDER_SCALE}&v=${state.info.version}`;
+  if (thumb) thumb.src = thumbUrl(state.page);
   $("#overlay").replaceChildren();
   renderPageLabel();
   document.querySelectorAll(".thumb").forEach((el, i) => el.classList.toggle("active", i === state.page));
@@ -78,6 +83,10 @@ export function renderPageLabel() {
   thumbLabels();
 }
 
+export function thumbUrl(i) {
+  return `/api/docs/${state.docId}/pages/${i}.png?zoom=${0.4 * RENDER_SCALE}&v=${state.info.version}`;
+}
+
 export function renderThumbs() {
   const box = $("#thumbs");
   box.replaceChildren();
@@ -89,7 +98,7 @@ export function renderThumbs() {
     img.alt = "";
     img.tabIndex = 0;
     img.setAttribute("role", "button");
-    img.src = `/api/docs/${state.docId}/pages/${i}.png?zoom=${0.4 * RENDER_SCALE}&v=${state.info.version}`;
+    img.src = thumbUrl(i);
     const go = () => {
       state.page = i;
       renderPage();

@@ -163,12 +163,21 @@ def _new_meta(name: str) -> dict:
     return {"name": _safe_name(name), "history": 0, "floor": 0, "redo": 0, "version": 0}
 
 
+def _store_pdf(src, dest: Path) -> None:
+    # Compressed once, here. Every later save skips it, see _mutate.
+    doc = fitz.open(stream=src, filetype="pdf") if isinstance(src, bytes) else fitz.open(src)
+    try:
+        doc.save(dest, garbage=3, deflate=True)
+    finally:
+        doc.close()
+
+
 def _create_doc(pdf_bytes: bytes, name: str) -> str:
     doc_id = uuid.uuid4().hex
     path = DOCS_DIR / doc_id
     (path / "history").mkdir(parents=True)
     (path / "redo").mkdir()
-    (path / "current.pdf").write_bytes(pdf_bytes)
+    _store_pdf(pdf_bytes, path / "current.pdf")
     _write_meta(path, _new_meta(name))
     return doc_id
 
@@ -178,7 +187,8 @@ def _create_doc_from_file(src: Path, name: str) -> str:
     path = DOCS_DIR / doc_id
     (path / "history").mkdir(parents=True)
     (path / "redo").mkdir()
-    shutil.move(str(src), path / "current.pdf")
+    _store_pdf(src, path / "current.pdf")
+    src.unlink(missing_ok=True)
     _write_meta(path, _new_meta(name))
     return doc_id
 
@@ -314,7 +324,8 @@ def _mutate(doc_id: str, action: Callable[[fitz.Document], Any], keep_history: b
         doc = fitz.open(path / "current.pdf")
         try:
             result = action(doc)
-            doc.save(tmp, garbage=3, deflate=True)
+            # No deflate here: recompressing the whole file took about two seconds on large documents.
+            doc.save(tmp, garbage=3, deflate=False)
         except HTTPException:
             snap.unlink(missing_ok=True)
             raise

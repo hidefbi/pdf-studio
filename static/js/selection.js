@@ -17,11 +17,14 @@ export async function ensureLines() {
 }
 
 let layerRun = 0;
+let movingGhosts = [];
 const lineBoxes = new WeakMap();
 let marqueeLines = [];
 let marqueeBound = false;
 
 export async function drawTextLayer() {
+  // A new page is on screen, so any move ghosts can go.
+  clearGhosts();
   const run = ++layerRun;
   const layer = $("#textlayer");
   const active = (state.tool === "replace" || state.tool === "select") && Boolean(state.info);
@@ -324,6 +327,11 @@ export function bindLineBox(box, ln, lines) {
   });
 }
 
+export function clearGhosts() {
+  movingGhosts.forEach((g) => g.remove());
+  movingGhosts = [];
+}
+
 export function startGroupMove(e, pressed) {
   const items = selectedItems();
   const start = { x: e.clientX, y: e.clientY };
@@ -343,10 +351,13 @@ export function startGroupMove(e, pressed) {
   const onUp = () => {
     window.removeEventListener("pointermove", onMove);
     window.removeEventListener("pointerup", onUp);
-    ghosts.forEach((g) => g.remove());
     if (Math.hypot(dx, dy) > SELECT_SLOP) {
+      // The ghosts stay until the moved page is drawn, so the text does not jump back first.
+      movingGhosts = ghosts;
+      setTimeout(() => { if (movingGhosts === ghosts) clearGhosts(); }, 4000);
       runAction(() => moveLines(items, dx, dy));
     } else {
+      ghosts.forEach((g) => g.remove());
       selectOnly(pressed);
     }
   };
@@ -424,7 +435,10 @@ export async function moveLines(items, dx, dy) {
   let pdy = dy * s;
   pdx = Math.max(-box[0], Math.min(page.width - box[2], pdx));
   pdy = Math.max(-box[1], Math.min(page.height - box[3], pdy));
-  if (Math.abs(pdx) < 0.5 && Math.abs(pdy) < 0.5) return;
+  if (Math.abs(pdx) < 0.5 && Math.abs(pdy) < 0.5) {
+    clearGhosts();
+    return;
+  }
   const ops = items.map((ln) => ({ type: "erase_text", page: state.page, rect: ln.bbox, origin: ln.origin }));
   items.forEach((ln) => ops.push({
     type: "write_text",
@@ -451,7 +465,12 @@ export async function moveLines(items, dx, dy) {
     })),
     anchor: null,
   };
-  await applyOps(ops);
+  try {
+    await applyOps(ops);
+  } catch (err) {
+    clearGhosts();
+    throw err;
+  }
 }
 
 // Keys, paste and the pointer position for the selection. Bound once at startup.
