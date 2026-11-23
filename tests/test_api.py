@@ -17,6 +17,35 @@ from support import call, doc_id_of, fixture, saved_pdf, upload, word_text
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def test_ocr_hands_the_engine_bytes_not_a_temp_file(tmp_path):
+    pdf = tmp_path / "scan.pdf"
+    doc = pymupdf.open()
+    doc.new_page().insert_text((72, 100), "scan", fontsize=24)
+    doc.save(pdf)
+    doc.close()
+    script = """
+import json, sys
+from pathlib import Path
+from app import main as m
+
+seen = []
+
+class FakeEngine:
+    def __call__(self, img):
+        seen.append(type(img).__name__)
+        return [], [0.0]
+
+m._ocr_engine = FakeEngine()
+doc_id = m._create_doc(Path(sys.argv[1]).read_bytes(), "scan.pdf")
+m.ocr_page(doc_id, 0)
+print(json.dumps(seen))
+"""
+    env = dict(os.environ, PDF_STUDIO_DATA=str(tmp_path / "data"), PDF_STUDIO_NO_WATCHDOG="1")
+    out = subprocess.run([sys.executable, "-c", script, str(pdf)], cwd=ROOT, env=env,
+                         capture_output=True, text=True, timeout=60, check=True)
+    assert json.loads(out.stdout.strip().splitlines()[-1]) == ["bytes"]
+
+
 def test_ops_response_carries_the_same_info_as_get(server):
     doc = doc_id_of(server.base, fixture("multi.pdf"))
     status, body = call(server.base, "POST", f"/api/docs/{doc}/ops",

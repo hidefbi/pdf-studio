@@ -1375,15 +1375,12 @@ def ocr_page(doc_id: str, index: int):
     finally:
         doc.close()
     engine = _get_ocr_engine()
-    tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
     try:
-        tmp.write(png)
-        tmp.close()
-        result, _ = engine(tmp.name)
+        # Bytes in, so the page image never touches the disk. The bytes input
+        # needs the 1.4 line of rapidocr-onnxruntime, which requirements-ocr.txt pins.
+        result, _ = engine(png)
     except Exception:
         raise HTTPException(500, "text recognition failed")
-    finally:
-        os.unlink(tmp.name)
     lines = []
     for box, text, score in result or []:
         text = str(text).strip()
