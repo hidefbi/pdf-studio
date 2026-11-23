@@ -46,13 +46,13 @@ def test_copy_paste_at_pointer_undo_and_cut(ui, server):
     ui.page.select_option("#font", "auto")
     ui.page.wait_for_timeout(500)
     click_line(ui.page, "Helvetica plain")
-    ui.page.keyboard.press("Control+c")
+    ui.page.keyboard.press("ControlOrMeta+c")
     ui.page.wait_for_timeout(200)
     img = ui.page.locator("#page-img").bounding_box()
     tx, ty = img["x"] + img["width"] * 0.3, img["y"] + img["height"] * 0.85
     ui.page.mouse.move(tx, ty)
     ui.page.wait_for_timeout(150)
-    ui.page.keyboard.press("Control+v")
+    ui.page.keyboard.press("ControlOrMeta+v")
     ui.page.wait_for_timeout(1200)
     assert count_text(server.base, doc, "Helvetica plain line") == 2
 
@@ -63,24 +63,24 @@ def test_copy_paste_at_pointer_undo_and_cut(ui, server):
     assert ui.page.locator(".tl-box.selected").count() >= 1
 
     ui.page.keyboard.press("Escape")
-    ui.page.keyboard.press("Control+z")
+    ui.page.keyboard.press("ControlOrMeta+z")
     ui.page.wait_for_timeout(1000)
     assert count_text(server.base, doc, "Helvetica plain line") == 1
 
     click_line(ui.page, "Embedded line one here")
-    ui.page.keyboard.press("Control+x")
+    ui.page.keyboard.press("ControlOrMeta+x")
     ui.page.wait_for_timeout(1000)
     assert count_text(server.base, doc, "Embedded line one here") == 0
     assert ui.page.locator(".tl-box.selected").count() == 0
     ui.page.mouse.move(tx, ty)
     ui.page.wait_for_timeout(150)
-    ui.page.keyboard.press("Control+v")
+    ui.page.keyboard.press("ControlOrMeta+v")
     ui.page.wait_for_timeout(1000)
     assert count_text(server.base, doc, "Embedded line one here") == 1
 
     before = count_text(server.base, doc, "Helvetica plain line")
     ui.page.click("#search-input")
-    ui.page.keyboard.press("Control+v")
+    ui.page.keyboard.press("ControlOrMeta+v")
     ui.page.wait_for_timeout(800)
     assert count_text(server.base, doc, "Helvetica plain line") == before
     assert not ui.errors

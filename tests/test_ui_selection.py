@@ -40,10 +40,10 @@ def test_selection_modes_and_group_actions(ui, server):
     assert page.locator(".tl-box.selected").count() == 4
     assert page.locator(".style-count").is_visible()
 
-    boxes.nth(7).click(modifiers=["Control"])
+    boxes.nth(7).click(modifiers=["ControlOrMeta"])
     page.wait_for_timeout(300)
     assert page.locator(".tl-box.selected").count() == 5
-    boxes.nth(5).click(modifiers=["Control"])
+    boxes.nth(5).click(modifiers=["ControlOrMeta"])
     page.wait_for_timeout(300)
     assert page.locator(".tl-box.selected").count() == 4
 
@@ -52,7 +52,7 @@ def test_selection_modes_and_group_actions(ui, server):
     assert page.locator(".tl-box.selected").count() == 0 and not bar.is_visible()
 
     page.locator("body").click(position={"x": 5, "y": 5})
-    page.keyboard.press("Control+a")
+    page.keyboard.press("ControlOrMeta+a")
     page.wait_for_timeout(400)
     assert page.locator(".tl-box.selected").count() == n
     page.keyboard.press("Escape")
@@ -295,7 +295,7 @@ def test_copy_works_from_the_add_text_tool(ui, server):
     page.wait_for_timeout(300)
     page.locator('.tool[data-tool="text"]').click()
     page.wait_for_timeout(200)
-    page.keyboard.press("Control+c")
+    page.keyboard.press("ControlOrMeta+c")
     page.wait_for_timeout(200)
     copied = page.evaluate("() => window.pdfStudio.state.clipboard && window.pdfStudio.state.clipboard.items.length")
     assert copied == 1
@@ -320,7 +320,7 @@ def test_paste_of_our_own_copy_keeps_the_lines(ui, server):
     before = len(lines_of(server.base, doc))
     page.locator(".tl-box").nth(2).click()
     page.wait_for_timeout(300)
-    page.keyboard.press("Control+c")
+    page.keyboard.press("ControlOrMeta+c")
     page.wait_for_timeout(200)
     page.evaluate("""() => {
       const text = window.pdfStudio.state.clipboard.text;
