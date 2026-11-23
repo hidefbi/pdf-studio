@@ -14,6 +14,7 @@ It started as a way to change a few lines in a PDF without paying for a full des
 - Add new text anywhere on a page. Text can be left, center, or right aligned.
 - Set letter spacing (kerning) and line spacing for new text.
 - Copy and paste text blocks, or move them with the mouse.
+- With text selected, the arrow keys nudge it by 1 point. Hold Shift for 10. With nothing selected, the arrow keys still turn pages. Each nudge is one undo step.
 - Search the document and jump to the matches.
 
 ![Adjusting line spacing and kerning](docs/screenshots/spacing.png)

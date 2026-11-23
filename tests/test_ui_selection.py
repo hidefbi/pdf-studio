@@ -350,3 +350,27 @@ def test_right_click_delete_removes_the_selected_lines(ui, server):
     page.wait_for_timeout(800)
     assert len(lines_of(server.base, doc)) == before - 4
     assert not menu.is_visible()
+
+
+def test_arrow_keys_nudge_selection_and_do_nothing_without_one(ui, server):
+    page = ui.page
+    doc = open_file(page, fixture("multi.pdf"))
+    page.locator(".tl-box").nth(2).click()
+    page.wait_for_timeout(400)
+    start = page.evaluate("() => window.pdfStudio.state.selected.items[0].origin")
+    page.keyboard.press("ArrowRight")
+    page.wait_for_timeout(300)
+    page.keyboard.press("Shift+ArrowDown")
+    page.wait_for_timeout(1200)
+    moved = page.evaluate("() => window.pdfStudio.state.selected.items[0].origin")
+    assert abs(moved[0] - (start[0] + 1)) < 0.01
+    assert abs(moved[1] - (start[1] + 10)) < 0.01
+    saved = [ln["origin"] for ln in lines_of(server.base, doc)]
+    assert any(abs(o[0] - moved[0]) < 0.01 and abs(o[1] - moved[1]) < 0.01 for o in saved)
+
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(300)
+    steps_before = steps(page)
+    page.keyboard.press("ArrowLeft")
+    page.wait_for_timeout(500)
+    assert steps(page) == steps_before

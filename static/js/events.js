@@ -4,7 +4,7 @@ import { onPagePress } from "./editor.js";
 import { download, runAction, uploadPdf } from "./files.js";
 import { closeFontDialog, deleteFont, openFontDialog, renderFontSelect, uploadFonts } from "./fonts.js";
 import { runSearch } from "./search.js";
-import { bindSelectionKeys } from "./selection.js";
+import { arrowNudge, bindSelectionKeys } from "./selection.js";
 import { applyStyle, bindStyleBar } from "./stylebar.js";
 import { applyOps, bindCanvas, recognizePage, setTool } from "./tools.js";
 import { openDoc, renderAll, renderPage } from "./view.js";
@@ -166,6 +166,7 @@ export function bindEvents() {
 
   document.addEventListener("keydown", (e) => {
     if (e.target.matches("input, select, textarea") || e.target.isContentEditable) return;
+    if (arrowNudge(e)) return;
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
       e.preventDefault();
       $(e.shiftKey ? "#redo" : "#undo").click();

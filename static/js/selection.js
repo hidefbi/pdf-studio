@@ -355,7 +355,8 @@ export function startGroupMove(e, pressed) {
       // The ghosts stay until the moved page is drawn, so the text does not jump back first.
       movingGhosts = ghosts;
       setTimeout(() => { if (movingGhosts === ghosts) clearGhosts(); }, 4000);
-      runAction(() => moveLines(items, dx, dy));
+      const s = scaleFactor();
+      runAction(() => moveLines(items, dx * s, dy * s));
     } else {
       ghosts.forEach((g) => g.remove());
       selectOnly(pressed);
@@ -426,15 +427,12 @@ export function shiftBox(b, dx, dy) {
   return [b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy];
 }
 
-// Clamped to the page, so a move cannot push lines off it.
+// dx and dy are PDF points. Clamped to the page, so a move cannot push lines off it.
 export async function moveLines(items, dx, dy) {
-  const s = scaleFactor();
   const page = state.info.pages[state.page];
   const box = unionBox(items);
-  let pdx = dx * s;
-  let pdy = dy * s;
-  pdx = Math.max(-box[0], Math.min(page.width - box[2], pdx));
-  pdy = Math.max(-box[1], Math.min(page.height - box[3], pdy));
+  let pdx = Math.max(-box[0], Math.min(page.width - box[2], dx));
+  let pdy = Math.max(-box[1], Math.min(page.height - box[3], dy));
   if (Math.abs(pdx) < 0.5 && Math.abs(pdy) < 0.5) {
     clearGhosts();
     return;
@@ -471,6 +469,32 @@ export async function moveLines(items, dx, dy) {
     clearGhosts();
     throw err;
   }
+}
+
+// Arrow keys move the selection one point at a time, ten with Shift.
+// Moves run one after another, so a held key cannot start a write before the last one lands.
+// The selection is read when the move runs, not when the key is pressed.
+const ARROW_DIRS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+let nudgeQueue = Promise.resolve();
+
+function nudgeSelection(dx, dy) {
+  nudgeQueue = nudgeQueue.then(() => {
+    const items = selectedItems();
+    if (!items.length || !state.info) return;
+    return runAction(() => moveLines(items, dx, dy));
+  });
+}
+
+// Returns true when the key moved the selection, so the caller skips paging.
+export function arrowNudge(e) {
+  const dir = ARROW_DIRS[e.key];
+  if (!dir || e.ctrlKey || e.metaKey || e.altKey) return false;
+  if (state.editor || !selectedItems().length) return false;
+  if (state.tool !== "select" && state.tool !== "replace") return false;
+  const step = e.shiftKey ? 10 : 1;
+  e.preventDefault();
+  nudgeSelection(dir[0] * step, dir[1] * step);
+  return true;
 }
 
 // Keys, paste and the pointer position for the selection. Bound once at startup.
