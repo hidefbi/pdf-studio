@@ -1331,17 +1331,20 @@ def _ocr_is_bold(gray, x0, y0, x1, y1, size, scale):
     return ratio > OCR_BOLD_RATIO
 OCR_MIN_SCORE = 0.5
 _ocr_engine = None
+_ocr_lock = threading.Lock()
 
 
 def _get_ocr_engine():
-    """Loaded on first use, since RapidOCR is optional."""
+    """Loaded on first use, since RapidOCR is optional. Two first requests shouldn't both load it."""
     global _ocr_engine
     if _ocr_engine is None:
-        try:
-            from rapidocr_onnxruntime import RapidOCR
-        except ImportError:
-            raise HTTPException(501, "ocr_not_installed")
-        _ocr_engine = RapidOCR()
+        with _ocr_lock:
+            if _ocr_engine is None:
+                try:
+                    from rapidocr_onnxruntime import RapidOCR
+                except ImportError:
+                    raise HTTPException(501, "ocr_not_installed")
+                _ocr_engine = RapidOCR()
     return _ocr_engine
 
 

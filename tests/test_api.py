@@ -17,6 +17,32 @@ from support import call, doc_id_of, fixture, saved_pdf, upload, word_text
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def test_ocr_engine_loads_once_on_first_parallel_use(monkeypatch):
+    import threading
+    import time
+    import types
+
+    from app import main as m
+
+    built = []
+
+    class FakeOCR:
+        def __init__(self):
+            built.append(self)
+            time.sleep(0.2)  # long enough for the other threads to arrive
+
+    fake = types.ModuleType("rapidocr_onnxruntime")
+    fake.RapidOCR = FakeOCR
+    monkeypatch.setitem(sys.modules, "rapidocr_onnxruntime", fake)
+    monkeypatch.setattr(m, "_ocr_engine", None)
+    threads = [threading.Thread(target=m._get_ocr_engine) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert len(built) == 1
+
+
 def rotate(base, doc, angle=90):
     return call(base, "POST", f"/api/docs/{doc}/ops",
                 {"ops": [{"type": "rotate_page", "page": 0, "angle": angle}]})[0]
