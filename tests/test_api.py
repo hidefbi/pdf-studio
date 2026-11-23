@@ -43,6 +43,31 @@ def test_ocr_engine_loads_once_on_first_parallel_use(monkeypatch):
     assert len(built) == 1
 
 
+def test_document_locks_are_per_document():
+    import threading
+
+    from app import main as m
+
+    held, release = threading.Event(), threading.Event()
+
+    def hold_first_document():
+        with m._doc_lock("first"):
+            held.set()
+            release.wait(5)
+
+    holder = threading.Thread(target=hold_first_document)
+    holder.start()
+    try:
+        assert held.wait(5)
+        other = m._doc_lock("second")
+        assert other.acquire(timeout=1)  # not blocked by the first document's lock
+        other.release()
+        assert m._doc_lock("first") is m._doc_lock("first")
+    finally:
+        release.set()
+        holder.join()
+
+
 def rotate(base, doc, angle=90):
     return call(base, "POST", f"/api/docs/{doc}/ops",
                 {"ops": [{"type": "rotate_page", "page": 0, "angle": angle}]})[0]

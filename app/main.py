@@ -86,7 +86,10 @@ FONTS_DIR.mkdir(parents=True, exist_ok=True)
 _remove_leftovers()
 _tighten_permissions(DOCS_DIR)
 _tighten_permissions(FONTS_DIR)
-_lock = threading.RLock()
+_fonts_lock = threading.RLock()
+# One lock per document, so an edit to one document doesn't wait on another.
+_doc_locks: dict[str, threading.RLock] = {}
+_doc_locks_guard = threading.Lock()
 _cache_lock = threading.Lock()
 _render_cache: OrderedDict = OrderedDict()
 _render_bytes = 0
@@ -312,10 +315,20 @@ def _ocr_scale(page: fitz.Page) -> float:
     return scale
 
 
+def _doc_lock(doc_id: str) -> threading.RLock:
+    # Locks are kept after a delete on purpose: dropping one could let two
+    # requests work on the same folder at once. Each one is a few bytes.
+    with _doc_locks_guard:
+        lock = _doc_locks.get(doc_id)
+        if lock is None:
+            lock = _doc_locks[doc_id] = threading.RLock()
+        return lock
+
+
 def _mutate(doc_id: str, action: Callable[[fitz.Document], Any], keep_history: bool = True) -> Any:
     """Snapshot first, so the edit can be undone. Redaction skips that, see _purge_history."""
     path = _doc_dir(doc_id)
-    with _lock:
+    with _doc_lock(doc_id):
         meta = _read_meta(path)
         snap = path / "history" / f"{meta['history'] + 1:06d}.pdf"
         if keep_history:
@@ -1435,7 +1448,7 @@ def _history_state(meta: dict) -> dict:
 @app.post("/api/docs/{doc_id}/undo")
 def undo(doc_id: str):
     path = _doc_dir(doc_id)
-    with _lock:
+    with _doc_lock(doc_id):
         meta = _read_meta(path)
         if meta["history"] <= meta.get("floor", 0):
             raise HTTPException(409, "nothing to undo")
@@ -1454,7 +1467,7 @@ def undo(doc_id: str):
 @app.post("/api/docs/{doc_id}/redo")
 def redo(doc_id: str):
     path = _doc_dir(doc_id)
-    with _lock:
+    with _doc_lock(doc_id):
         meta = _read_meta(path)
         (path / "redo").mkdir(exist_ok=True)
         redo_n = meta.get("redo", 0)
@@ -1472,7 +1485,7 @@ def redo(doc_id: str):
 @app.delete("/api/docs/{doc_id}")
 def delete_doc(doc_id: str):
     path = _doc_dir(doc_id)
-    with _lock:
+    with _doc_lock(doc_id):
         shutil.rmtree(path)
     _forget_doc(doc_id)
     return {"ok": True}
@@ -1886,7 +1899,7 @@ async def upload_font(file: UploadFile = File(...)):
 
         font_id = uuid.uuid4().hex[:12]
         display = font.name or Path(filename).stem
-        with _lock:
+        with _fonts_lock:
             (FONTS_DIR / f"{font_id}{ext}").write_bytes(data)
             items = _load_fonts()
             items.append({"id": font_id, "name": display, "file": f"{font_id}{ext}"})
@@ -1898,7 +1911,7 @@ async def upload_font(file: UploadFile = File(...)):
 
 @app.delete("/api/fonts/{font_id}")
 def delete_font(font_id: str):
-    with _lock:
+    with _fonts_lock:
         items = _load_fonts()
         entry = next((f for f in items if f["id"] == font_id), None)
         if entry is None:
