@@ -2,7 +2,7 @@ import { $, HIGHLIGHT_COLOR, api, hexToRgb, normRect, postJson, showError, state
 import { renderAll, scaleFactor, svgShape, toPdf } from "./view.js";
 import { scrollSnapshot } from "./events.js";
 import { fontKey, startEditor } from "./editor.js";
-import { drawTextLayer, ensureLines, clearSelection } from "./selection.js";
+import { drawTextLayer, ensureLines, clearSelection, flushNudge } from "./selection.js";
 import { hideStyleBar } from "./stylebar.js";
 import { currentColor, currentSize } from "./toolbar.js";
 
@@ -40,7 +40,29 @@ export function drawPreview() {
 // Pages moving, turning or going away make the selection point at the wrong place.
 const RELAYOUT_OPS = new Set(["delete_page", "move_page", "rotate_page"]);
 
-export async function applyOps(ops) {
+// Every write goes through one queue, so the server gets them in the order they were made.
+let writeQueue = Promise.resolve();
+let pendingWrites = 0;
+
+export function queueWrite(job) {
+  pendingWrites += 1;
+  const run = writeQueue.then(job);
+  writeQueue = run.catch(() => {}).then(() => { pendingWrites -= 1; });
+  return run;
+}
+
+// True while a write is waiting or running. The lines on screen are out of date then.
+export function writesBusy() {
+  return pendingWrites > 0;
+}
+
+export function applyOps(ops) {
+  flushNudge();
+  return queueWrite(() => sendOps(ops));
+}
+
+// Sends one batch and redraws. Called from the queue, so it never waits on the queue itself.
+export async function sendOps(ops) {
   state.keepScroll = scrollSnapshot();
   if (ops.some((op) => RELAYOUT_OPS.has(op.type))) clearSelection();
   const res = await postJson(`/api/docs/${state.docId}/ops`, { ops });

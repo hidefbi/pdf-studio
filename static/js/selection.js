@@ -4,7 +4,7 @@ import { openLineEditor, placeBox } from "./editor.js";
 import { runAction } from "./files.js";
 import { bindImageBox, bindPictureMenu, ensureImages, hideImageMenu, imageOfBox, isImageSelected, pictureAction, pictureUnderPoint, restoreImageSelection, selectImage, showImageMenu, syncImageHandles } from "./images.js";
 import { hideStyleBar, showStyleBar } from "./stylebar.js";
-import { applyOps } from "./tools.js";
+import { applyOps, queueWrite, sendOps, writesBusy } from "./tools.js";
 import { scaleFactor } from "./view.js";
 
 export async function ensureLines() {
@@ -151,6 +151,7 @@ export function sizesMixed(items) {
 }
 
 export function setSelection(items, anchor) {
+  flushNudge();
   state.imageSel = null;
   state.selected = {
     page: state.page,
@@ -168,6 +169,7 @@ export function selectOnly(ln) {
 
 // Same as cut, minus the clipboard.
 export function deleteSelection() {
+  flushNudge();
   const items = selectedItems();
   if (!items.length) return;
   clearSelection();
@@ -202,6 +204,7 @@ export function bindTextMenu() {
 }
 
 export function clearSelection() {
+  flushNudge();
   state.selected = null;
   state.imageSel = null;
   syncSelectionDom();
@@ -293,7 +296,7 @@ export function restoreSelection(lines) {
 
 export function bindLineBox(box, ln, lines) {
   box.addEventListener("pointerdown", (e) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || boxIsStale()) return;
     const modifier = e.shiftKey || e.metaKey || e.ctrlKey;
     if (modifier) {
       e.preventDefault();
@@ -306,11 +309,13 @@ export function bindLineBox(box, ln, lines) {
     startGroupMove(e, ln);
   });
   box.addEventListener("click", (e) => {
+    if (boxIsStale()) return;
     // Modifier clicks only change the selection.
     if (state.tool === "replace" && !(e.shiftKey || e.metaKey || e.ctrlKey)) openLineEditor(ln);
   });
   box.addEventListener("contextmenu", (e) => {
     e.preventDefault();
+    if (boxIsStale()) return;
     // Over a picture the picture menu still wins.
     const picture = state.tool === "select" ? pictureUnderPoint(e) : null;
     if (picture) {
@@ -323,7 +328,7 @@ export function bindLineBox(box, ln, lines) {
     showTextMenu(e.clientX, e.clientY);
   });
   box.addEventListener("dblclick", () => {
-    if (state.tool === "select") openLineEditor(ln);
+    if (state.tool === "select" && !boxIsStale()) openLineEditor(ln);
   });
 }
 
@@ -332,16 +337,26 @@ export function clearGhosts() {
   movingGhosts = [];
 }
 
-export function startGroupMove(e, pressed) {
-  const items = selectedItems();
-  const start = { x: e.clientX, y: e.clientY };
-  const ghosts = items.map((ln) => {
+// Line boxes are drawn from the last redraw, so while a move is pending they point at old places.
+function boxIsStale() {
+  return Boolean(nudge) || writesBusy();
+}
+
+function makeGhosts(items) {
+  return items.map((ln) => {
     const ghost = document.createElement("div");
     ghost.className = "tl-ghost";
     placeBox(ghost, ln.bbox);
     $("#stage").append(ghost);
     return ghost;
   });
+}
+
+export function startGroupMove(e, pressed) {
+  flushNudge(); // a pending arrow move lands first, so the drag reads the real positions
+  const items = selectedItems();
+  const start = { x: e.clientX, y: e.clientY };
+  const ghosts = makeGhosts(items);
   let dx = 0, dy = 0;
   const onMove = (ev) => {
     dx = ev.clientX - start.x;
@@ -427,23 +442,41 @@ export function shiftBox(b, dx, dy) {
   return [b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy];
 }
 
-// dx and dy are PDF points. Clamped to the page, so a move cannot push lines off it.
-export async function moveLines(items, dx, dy) {
-  const page = state.info.pages[state.page];
+// ---------- moves ----------
+// A drag moves its lines once, on drop. Arrow keys add up an offset while the key is
+// held and move the lines when the keys go quiet, so a held key is one move and one undo step.
+const NUDGE_IDLE_MS = 200;
+const ARROW_DIRS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+let nudge = null; // { items, page, dx, dy, ghosts, timer }
+
+// Clamped to the page, so a move cannot push lines off it.
+function clampMove(items, page, dx, dy) {
+  const size = state.info.pages[page];
   const box = unionBox(items);
-  let pdx = Math.max(-box[0], Math.min(page.width - box[2], dx));
-  let pdy = Math.max(-box[1], Math.min(page.height - box[3], dy));
-  if (Math.abs(pdx) < 0.5 && Math.abs(pdy) < 0.5) {
-    clearGhosts();
-    return;
-  }
-  const ops = items.map((ln) => ({ type: "erase_text", page: state.page, rect: ln.bbox, origin: ln.origin }));
+  return [
+    Math.max(-box[0], Math.min(size.width - box[2], dx)),
+    Math.max(-box[1], Math.min(size.height - box[3], dy)),
+  ];
+}
+
+function tinyMove(dx, dy) {
+  return Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5;
+}
+
+function dropGhosts(list) {
+  list.forEach((g) => g.remove());
+  movingGhosts = movingGhosts.filter((g) => !list.includes(g));
+}
+
+// Erase the old lines and write them again at the new place, as one batch.
+export function moveOps(items, page, dx, dy) {
+  const ops = items.map((ln) => ({ type: "erase_text", page, rect: ln.bbox, origin: ln.origin }));
   items.forEach((ln) => ops.push({
     type: "write_text",
-    page: state.page,
+    page,
     rect: ln.bbox,
     origin: ln.origin,
-    dest: [ln.origin[0] + pdx, ln.origin[1] + pdy],
+    dest: [ln.origin[0] + dx, ln.origin[1] + dy],
     text: ln.text,
     font: "auto",
     base_font: ln.base_font,
@@ -453,47 +486,89 @@ export async function moveLines(items, dx, dy) {
     tracking: ln.tracking ?? 0,
     leading: ln.leading ?? null,
   }));
-  // The redraw matches the selection by place, so set it first.
+  return ops;
+}
+
+// dx and dy are PDF points. The selection moves now, so the next gesture starts from where
+// the text is going. The write waits its turn in the write queue.
+function enqueueMove(items, page, dx, dy) {
   state.selected = {
-    page: state.page,
+    page,
     items: items.map((ln) => ({
       ...ln,
-      bbox: shiftBox(ln.bbox, pdx, pdy),
-      origin: [ln.origin[0] + pdx, ln.origin[1] + pdy],
+      bbox: shiftBox(ln.bbox, dx, dy),
+      origin: [ln.origin[0] + dx, ln.origin[1] + dy],
     })),
     anchor: null,
   };
-  try {
-    await applyOps(ops);
-  } catch (err) {
+  return queueWrite(() => sendOps(moveOps(items, page, dx, dy))).catch((err) => {
     clearGhosts();
     throw err;
-  }
-}
-
-// Arrow keys move the selection one point at a time, ten with Shift.
-// Moves run one after another, so a held key cannot start a write before the last one lands.
-// The selection is read when the move runs, not when the key is pressed.
-const ARROW_DIRS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
-let nudgeQueue = Promise.resolve();
-
-function nudgeSelection(dx, dy) {
-  nudgeQueue = nudgeQueue.then(() => {
-    const items = selectedItems();
-    if (!items.length || !state.info) return;
-    return runAction(() => moveLines(items, dx, dy));
   });
 }
 
+// Drag drop. dx and dy are PDF points.
+export function moveLines(items, dx, dy) {
+  flushNudge();
+  const page = state.page;
+  const [pdx, pdy] = clampMove(items, page, dx, dy);
+  if (tinyMove(pdx, pdy)) {
+    clearGhosts();
+    return Promise.resolve();
+  }
+  return enqueueMove(items, page, pdx, pdy);
+}
+
+function startNudge() {
+  const items = selectedItems();
+  nudge = { items, page: state.page, dx: 0, dy: 0, ghosts: makeGhosts(items), timer: 0 };
+}
+
+// Commits the offset that arrow keys built up, if there is one. Anything that changes the
+// selection or writes to the page calls this first, so the move lands before that action.
+export function flushNudge() {
+  if (!nudge) return;
+  const { items, page, dx, dy, ghosts, timer } = nudge;
+  nudge = null;
+  clearTimeout(timer);
+  if (tinyMove(dx, dy)) {
+    ghosts.forEach((g) => g.remove());
+    return;
+  }
+  // The ghosts stay until the moved page is drawn, same as a drag.
+  movingGhosts = movingGhosts.concat(ghosts);
+  setTimeout(() => dropGhosts(ghosts), 4000);
+  runAction(() => enqueueMove(items, page, dx, dy));
+}
+
+// Page exit: hands back the ops for a pending offset, to send with keepalive.
+export function takeNudgeOps() {
+  if (!nudge) return [];
+  const { items, page, dx, dy, ghosts, timer } = nudge;
+  nudge = null;
+  clearTimeout(timer);
+  ghosts.forEach((g) => g.remove());
+  return tinyMove(dx, dy) ? [] : moveOps(items, page, dx, dy);
+}
+
+// Arrow keys move the selection one point at a time, ten with Shift. The preview follows
+// the keys right away, and the move is sent once the keys have been quiet for a moment.
 // Returns true when the key moved the selection, so the caller skips paging.
 export function arrowNudge(e) {
   const dir = ARROW_DIRS[e.key];
   if (!dir || e.ctrlKey || e.metaKey || e.altKey) return false;
   if (state.editor || !selectedItems().length) return false;
   if (state.tool !== "select" && state.tool !== "replace") return false;
-  const step = e.shiftKey ? 10 : 1;
   e.preventDefault();
-  nudgeSelection(dir[0] * step, dir[1] * step);
+  if (!nudge) startNudge();
+  const step = e.shiftKey ? 10 : 1;
+  const [dx, dy] = clampMove(nudge.items, nudge.page, nudge.dx + dir[0] * step, nudge.dy + dir[1] * step);
+  nudge.dx = dx;
+  nudge.dy = dy;
+  const s = scaleFactor();
+  nudge.ghosts.forEach((g) => { g.style.transform = `translate(${dx / s}px, ${dy / s}px)`; });
+  clearTimeout(nudge.timer);
+  nudge.timer = setTimeout(flushNudge, NUDGE_IDLE_MS);
   return true;
 }
 

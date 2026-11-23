@@ -1,4 +1,5 @@
 import { $, API_HEADERS, CLIENT_KEY, HEARTBEAT_MS, api, state, endEdit } from "./core.js";
+import { takeNudgeOps } from "./selection.js";
 
 // ---------- lifecycle ----------
 
@@ -60,12 +61,15 @@ export function startLifecycle() {
   });
 }
 
-// Commit an unconfirmed edit when the page is closed, so typed text is not lost.
+// Commit an unconfirmed edit or a pending arrow move when the page is closed, so nothing is lost.
 export function commitPendingOnExit() {
-  if (!state.edit || !state.docId) return;
-  const ops = state.edit.pending();
-  endEdit(false);
-  if (!ops) return;
+  let ops = takeNudgeOps();
+  if (state.edit && state.docId) {
+    const edit = state.edit.pending();
+    endEdit(false);
+    if (edit) ops = [...ops, ...edit];
+  }
+  if (!ops.length || !state.docId) return;
   fetch(`/api/docs/${state.docId}/ops`, {
     method: "POST",
     headers: API_HEADERS,

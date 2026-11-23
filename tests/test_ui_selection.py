@@ -374,3 +374,38 @@ def test_arrow_keys_nudge_selection_and_do_nothing_without_one(ui, server):
     page.keyboard.press("ArrowLeft")
     page.wait_for_timeout(500)
     assert steps(page) == steps_before
+
+
+def test_held_arrow_keys_are_one_move_and_one_undo_step(ui, server):
+    page = ui.page
+    doc = open_file(page, fixture("multi.pdf"))
+    page.locator(".tl-box").nth(2).click()
+    page.wait_for_timeout(400)
+    start = page.evaluate("() => window.pdfStudio.state.selected.items[0].origin")
+    before = steps(page)
+    for _ in range(8):
+        page.keyboard.press("ArrowRight")
+    page.wait_for_timeout(900)
+    assert steps(page) == before + 1
+    moved = page.evaluate("() => window.pdfStudio.state.selected.items[0].origin")
+    assert abs(moved[0] - (start[0] + 8)) < 0.01
+    saved = [ln["origin"] for ln in lines_of(server.base, doc)]
+    assert any(abs(o[0] - moved[0]) < 0.01 and abs(o[1] - moved[1]) < 0.01 for o in saved)
+
+    page.locator("#undo").click()
+    page.wait_for_timeout(800)
+    restored = [ln["origin"] for ln in lines_of(server.base, doc)]
+    assert any(abs(o[0] - start[0]) < 0.01 and abs(o[1] - start[1]) < 0.01 for o in restored)
+
+
+def test_escape_sends_a_pending_arrow_move(ui, server):
+    page = ui.page
+    doc = open_file(page, fixture("multi.pdf"))
+    page.locator(".tl-box").nth(2).click()
+    page.wait_for_timeout(400)
+    start = page.evaluate("() => window.pdfStudio.state.selected.items[0].origin")
+    page.keyboard.press("ArrowDown")
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(800)
+    saved = [ln["origin"] for ln in lines_of(server.base, doc)]
+    assert any(abs(o[0] - start[0]) < 0.01 and abs(o[1] - (start[1] + 1)) < 0.01 for o in saved)

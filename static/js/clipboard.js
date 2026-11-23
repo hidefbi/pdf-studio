@@ -3,7 +3,7 @@ import { toPdf } from "./view.js";
 import { applyOps } from "./tools.js";
 import { runAction } from "./files.js";
 import { currentColor, currentSize } from "./toolbar.js";
-import { clearSelection, selectedItems, shiftBox, unionBox } from "./selection.js";
+import { clearSelection, flushNudge, selectedItems, shiftBox, unionBox } from "./selection.js";
 
 // ---------- text clipboard ----------
 
@@ -13,6 +13,7 @@ const ownTexts = [];
 
 // Lines keep their font and color in-app. The plain text also goes to the system clipboard.
 export function copySelection(cut) {
+  flushNudge();
   const items = selectedItems();
   if (!items.length) return;
   const box = unionBox(items);

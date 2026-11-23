@@ -4,9 +4,9 @@ import { onPagePress } from "./editor.js";
 import { download, runAction, uploadPdf } from "./files.js";
 import { closeFontDialog, deleteFont, openFontDialog, renderFontSelect, uploadFonts } from "./fonts.js";
 import { runSearch } from "./search.js";
-import { arrowNudge, bindSelectionKeys } from "./selection.js";
+import { arrowNudge, bindSelectionKeys, flushNudge } from "./selection.js";
 import { applyStyle, bindStyleBar } from "./stylebar.js";
-import { applyOps, bindCanvas, recognizePage, setTool } from "./tools.js";
+import { applyOps, bindCanvas, queueWrite, recognizePage, setTool } from "./tools.js";
 import { openDoc, renderAll, renderPage } from "./view.js";
 
 // ---------- events ----------
@@ -41,24 +41,32 @@ export function bindEvents() {
     });
   });
 
-  $("#undo").addEventListener("click", () => runAction(async () => {
-    state.keepScroll = scrollSnapshot();
-    await postJson(`/api/docs/${state.docId}/undo`, {});
-    state.info = await getJson(`/api/docs/${state.docId}`);
-    renderAll();
+  // Undo, redo and delete wait behind any pending write, and a pending arrow move goes first.
+  $("#undo").addEventListener("click", () => runAction(() => {
+    flushNudge();
+    return queueWrite(async () => {
+      state.keepScroll = scrollSnapshot();
+      await postJson(`/api/docs/${state.docId}/undo`, {});
+      state.info = await getJson(`/api/docs/${state.docId}`);
+      renderAll();
+    });
   }));
 
-  $("#redo").addEventListener("click", () => runAction(async () => {
-    state.keepScroll = scrollSnapshot();
-    await postJson(`/api/docs/${state.docId}/redo`, {});
-    state.info = await getJson(`/api/docs/${state.docId}`);
-    renderAll();
+  $("#redo").addEventListener("click", () => runAction(() => {
+    flushNudge();
+    return queueWrite(async () => {
+      state.keepScroll = scrollSnapshot();
+      await postJson(`/api/docs/${state.docId}/redo`, {});
+      state.info = await getJson(`/api/docs/${state.docId}`);
+      renderAll();
+    });
   }));
 
   $("#delete-doc").addEventListener("click", () => runAction(async () => {
     if (!state.docId || !confirm(t("confirm_delete_doc"))) return;
     endEdit(false);
-    await api(`/api/docs/${state.docId}`, { method: "DELETE" });
+    flushNudge();
+    await queueWrite(() => api(`/api/docs/${state.docId}`, { method: "DELETE" }));
     state.info = null;
     state.docId = null;
     localStorage.removeItem(DOC_KEY);
@@ -182,6 +190,7 @@ export function bindEvents() {
 }
 
 export function setZoom(value) {
+  flushNudge();
   state.zoom = Math.max(0.5, Math.min(3, Math.round(value * 100) / 100));
   if (state.info) renderPage();
 }
@@ -190,6 +199,7 @@ export function goPage(delta) {
   if (!state.info) return;
   const next = state.page + delta;
   if (next < 0 || next >= state.info.pages.length) return;
+  flushNudge();
   endEdit(true);
   state.page = next;
   state.hit = null;
