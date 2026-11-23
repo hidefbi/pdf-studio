@@ -1,4 +1,4 @@
-import { $, HIGHLIGHT_COLOR, api, getJson, hexToRgb, normRect, postJson, showError, state, t, toast, endEdit } from "./core.js";
+import { $, HIGHLIGHT_COLOR, api, hexToRgb, normRect, postJson, showError, state, t, toast, endEdit } from "./core.js";
 import { renderAll, scaleFactor, svgShape, toPdf } from "./view.js";
 import { scrollSnapshot } from "./events.js";
 import { fontKey, startEditor } from "./editor.js";
@@ -45,7 +45,7 @@ export async function applyOps(ops) {
   if (ops.some((op) => RELAYOUT_OPS.has(op.type))) clearSelection();
   const res = await postJson(`/api/docs/${state.docId}/ops`, { ops });
   if (res.warnings && res.warnings.length) toast(t("overflow_warning"), true);
-  state.info = await getJson(`/api/docs/${state.docId}`);
+  state.info = res.info;
   renderAll(pagesTouched(ops));
 }
 

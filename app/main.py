@@ -1434,7 +1434,10 @@ def apply_ops(doc_id: str, body: OpsRequest):
         warnings = [w for w in (_apply_op(doc, op) for op in body.ops) if w]
         return {"ok": True, "warnings": warnings, "pages": doc.page_count}
     erases = any(op.type == "redact" for op in body.ops)
-    return _mutate(doc_id, action, keep_history=not erases)
+    result = _mutate(doc_id, action, keep_history=not erases)
+    # Same shape as GET /api/docs/{id}, so the page can update without a second request.
+    result["info"] = doc_info(doc_id)
+    return result
 
 
 def _history_state(meta: dict) -> dict:

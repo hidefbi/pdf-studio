@@ -17,6 +17,14 @@ from support import call, doc_id_of, fixture, saved_pdf, upload, word_text
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def test_ops_response_carries_the_same_info_as_get(server):
+    doc = doc_id_of(server.base, fixture("multi.pdf"))
+    status, body = call(server.base, "POST", f"/api/docs/{doc}/ops",
+                        {"ops": [{"type": "rotate_page", "page": 0, "angle": 90}]})
+    assert status == 200
+    assert body["info"] == call(server.base, "GET", f"/api/docs/{doc}")[1]
+
+
 def test_ocr_engine_loads_once_on_first_parallel_use(monkeypatch):
     import threading
     import time
