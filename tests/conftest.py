@@ -13,6 +13,10 @@ from pathlib import Path
 import pymupdf
 import pytest
 
+# Some tests import app.main in this process. Without the flag its watchdog
+# ends pytest after 30 s with no browser open, so set it before any import.
+os.environ.setdefault("PDF_STUDIO_NO_WATCHDOG", "1")
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
