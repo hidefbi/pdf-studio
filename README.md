@@ -158,6 +158,8 @@ PDF Studio does not send your files or any usage data anywhere. Read [PRIVACY.md
 
 PDF Studio is released under the GNU Affero General Public License v3.0. See [LICENSE](LICENSE).
 
+Copyright (C) 2026 hidefbi.
+
 PDF Studio depends on PyMuPDF, which is available under AGPL-3.0 or a commercial license from Artifex. Because of that, this project is distributed under AGPL-3.0 as well. The other dependencies and their licenses are listed in [THIRD_PARTY.md](THIRD_PARTY.md).
 
 Version 1.0.3

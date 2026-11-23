@@ -18,6 +18,8 @@ export const state = {
   keepScroll: null,
   lineCache: { key: "", lines: [] },
   editor: null,
+  edit: null,
+  layoutKey: "",
   imageCache: { key: "", images: [] },
   heartbeatTimer: null,
   tocDraft: [],
@@ -94,6 +96,15 @@ export function errorText(err) {
 
 export function showError(err) {
   toast(errorText(err), true);
+}
+
+// The inline text edit that is open, if any (see startEditor in editor.js).
+export function endEdit(save) {
+  if (state.edit) state.edit.finish(save);
+}
+
+export function pendingEdit() {
+  return state.edit ? state.edit.pending() : null;
 }
 
 export function hexToRgb(hex) {

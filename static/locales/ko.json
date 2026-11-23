@@ -94,6 +94,7 @@
   "font_size": "글꼴 크기",
   "language": "언어",
   "font_family": "글꼴",
+  "page_load_failed": "이 페이지를 표시할 수 없습니다.",
   "custom_color": "사용자 지정 색",
   "editor_save": "저장 (Enter)",
   "editor_cancel": "취소 (Esc)",

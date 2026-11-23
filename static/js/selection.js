@@ -1,10 +1,10 @@
-import { $, api, getJson, hexToRgb, showError, state, t, toast } from "./core.js";
+import { $, api, getJson, hexToRgb, showError, state, t, toast, endEdit } from "./core.js";
 import { scaleFactor } from "./view.js";
 import { setSizeInput } from "./toolbar.js";
 import { applyOps } from "./tools.js";
 import { runAction } from "./files.js";
 import { fontKey, isCustomFont, openLineEditor, placeBox } from "./editor.js";
-import { bindImageBox, bindPictureMenu, ensureImages, hideImageMenu, isImageSelected, pictureAction, pictureUnderPoint, restoreImageSelection, selectImage, showImageMenu, syncImageHandles } from "./images.js";
+import { bindImageBox, bindPictureMenu, ensureImages, hideImageMenu, isImageSelected, pictureAction, pictureUnderPoint, restoreImageSelection, selectImage, showImageMenu, syncImageHandles, imageOfBox } from "./images.js";
 import { copySelection, onPasteEvent } from "./clipboard.js";
 
 export async function ensureLines() {
@@ -16,26 +16,35 @@ export async function ensureLines() {
   return state.lineCache.lines;
 }
 
+let layerRun = 0;
+const lineBoxes = new WeakMap();
+let marqueeLines = [];
+let marqueeBound = false;
+
 export async function drawTextLayer() {
+  const run = ++layerRun;
   const layer = $("#textlayer");
-  layer.replaceChildren();
   const active = (state.tool === "replace" || state.tool === "select") && Boolean(state.info);
   layer.classList.toggle("active", active);
-  if (!active) return;
+  if (!active) {
+    layer.replaceChildren();
+    return;
+  }
   const img = $("#page-img");
   layer.style.width = `${img.clientWidth}px`;
   layer.style.height = `${img.clientHeight}px`;
   const lines = await ensureLines();
   const images = await ensureImages();
-  if (state.tool !== "replace" && state.tool !== "select") return;
+  // A newer call has started since this one (tool or page changed), so it owns the layer.
+  if (run !== layerRun || (state.tool !== "replace" && state.tool !== "select")) return;
+  layer.replaceChildren();
   // Pictures sit under the text boxes, so text on top of a picture is still clickable.
   if (state.tool === "select") {
-    images.forEach((img) => {
+    images.forEach((pic) => {
       const box = document.createElement("div");
       box.className = "img-box";
-      box.__img = img;
-      placeBox(box, img.bbox);
-      bindImageBox(box, img);
+      placeBox(box, pic.bbox);
+      bindImageBox(box, pic);
       layer.appendChild(box);
     });
   }
@@ -43,7 +52,7 @@ export async function drawTextLayer() {
     const box = document.createElement("div");
     box.className = "tl-box";
     box.title = ln.text;
-    box.__ln = ln;
+    lineBoxes.set(box, ln);
     placeBox(box, ln.bbox);
     bindLineBox(box, ln, lines);
     layer.appendChild(box);
@@ -197,9 +206,9 @@ export function clearSelection() {
 }
 
 export function syncSelectionDom() {
-  document.querySelectorAll(".tl-box").forEach((el) => el.classList.toggle("selected", isSelected(el.__ln)));
+  document.querySelectorAll(".tl-box").forEach((el) => el.classList.toggle("selected", isSelected(lineBoxes.get(el))));
   document.querySelectorAll(".img-box").forEach((el) => {
-    const on = isImageSelected(el.__img);
+    const on = isImageSelected(imageOfBox(el));
     el.classList.toggle("selected", on);
     syncImageHandles(el, on);
   });
@@ -358,10 +367,10 @@ export async function applyStyle(act, value) {
   }
   let editedLn = null;
   let editedText = null;
-  if (state.editor && state.editor.__finish) {
-    editedLn = state.editor.__ln || null;
-    editedText = state.editor.innerText.replace(/\n+$/, "");
-    state.editor.__finish(false);
+  if (state.edit) {
+    editedLn = state.edit.ln;
+    editedText = state.edit.text();
+    endEdit(false);
   }
   const ops = [];
   if (act === "underline") {
@@ -477,7 +486,7 @@ export function bindLineBox(box, ln, lines) {
     // Over a picture the picture menu still wins.
     const picture = state.tool === "select" ? pictureUnderPoint(e) : null;
     if (picture) {
-      selectImage(picture.__img);
+      selectImage(imageOfBox(picture));
       showImageMenu(e.clientX, e.clientY);
       return;
     }
@@ -520,7 +529,11 @@ export function startGroupMove(e, pressed) {
   window.addEventListener("pointerup", onUp);
 }
 
+// The layer lives as long as the page, so the listener is added once and reads the current lines.
 export function bindMarquee(layer, lines) {
+  marqueeLines = lines;
+  if (marqueeBound) return;
+  marqueeBound = true;
   layer.addEventListener("pointerdown", (e) => {
     if (e.target !== layer || e.button !== 0) return;
     if (state.tool !== "select" && state.tool !== "replace") return;
@@ -558,7 +571,7 @@ export function bindMarquee(layer, lines) {
       const y = ev.clientY - origin.top;
       const s = scaleFactor();
       const rect = [Math.min(x0, x) * s, Math.min(y0, y) * s, Math.max(x0, x) * s, Math.max(y0, y) * s];
-      const hit = lines.filter((ln) => {
+      const hit = marqueeLines.filter((ln) => {
         const xOverlap = ln.bbox[2] > rect[0] && ln.bbox[0] < rect[2];
         const top = Math.max(ln.bbox[1], rect[1]);
         const bottom = Math.min(ln.bbox[3], rect[3]);

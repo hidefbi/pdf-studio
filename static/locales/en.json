@@ -94,6 +94,7 @@
   "font_size": "Font size",
   "language": "Language",
   "font_family": "Font",
+  "page_load_failed": "Could not show this page.",
   "custom_color": "Custom color",
   "editor_save": "Save (Enter)",
   "editor_cancel": "Cancel (Esc)",

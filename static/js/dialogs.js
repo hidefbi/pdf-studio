@@ -2,6 +2,12 @@ import { $, api, errorText, getJson, postJson, state, t, toast } from "./core.js
 import { renderAll } from "./view.js";
 import { download, runAction } from "./files.js";
 
+// A half-typed number in the TOC keeps the last good value instead of NaN.
+function finiteOr(text, fallback) {
+  const n = Number(text);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 // ---------- page, bookmark and comment tools ----------
 
 export function bindPageTools() {
@@ -96,7 +102,7 @@ export function renderTocRows() {
     level.max = 10;
     level.title = t("toc_level");
     level.value = item.level;
-    level.addEventListener("input", () => (item.level = Number(level.value)));
+    level.addEventListener("input", () => (item.level = finiteOr(level.value, item.level)));
     const page = document.createElement("input");
     page.className = "narrow";
     page.type = "number";
@@ -104,7 +110,7 @@ export function renderTocRows() {
     page.max = state.info.pages.length;
     page.title = t("toc_page");
     page.value = item.page;
-    page.addEventListener("input", () => (item.page = Number(page.value)));
+    page.addEventListener("input", () => (item.page = finiteOr(page.value, item.page)));
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "btn small";

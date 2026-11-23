@@ -1,4 +1,4 @@
-import { $, hexToRgb, state, t } from "./core.js";
+import { $, hexToRgb, state, t, endEdit } from "./core.js";
 import { SVG_NS, scaleFactor } from "./view.js";
 import { applyOps } from "./tools.js";
 import { runAction } from "./files.js";
@@ -68,14 +68,14 @@ export function openLineEditor(ln) {
     bg: sampleBackground(ln.bbox),
     kerning: ln.tracking ?? 0,
     leading: ln.leading ?? null,
-    onCommit: (value, settings) => {
+    onCommit: (value, settings, page) => {
       const size = currentSize(ln.size);
       const color = currentColor();
       if (value === ln.text && size === ln.size && color === ln.color && fontKey() === "auto"
         && settings.kerning === (ln.tracking ?? 0) && settings.leading === (ln.leading ?? null)) return null;
       return [{
         type: "replace_span",
-        page: state.page,
+        page,
         rect: ln.bbox,
         origin: ln.origin,
         text: value,
@@ -91,7 +91,7 @@ export function openLineEditor(ln) {
       }];
     },
   });
-  if (state.editor) state.editor.__ln = ln;
+  if (state.edit) state.edit.ln = ln;
 }
 
 // Line handlers prevent default, so the state.editor never blurs; commit it here.
@@ -99,8 +99,8 @@ export function onPagePress(e) {
   if (e.target.closest(".toolbar, #style-bar")) return;
   const active = document.activeElement;
   if (active && active.closest(".toolbar")) active.blur();
-  if (!state.editor || state.editor.contains(e.target) || e.target.closest(".tl-tools")) return;
-  state.editor.__finish(true);
+  if (!state.edit || state.editor.contains(e.target) || e.target.closest(".tl-tools")) return;
+  endEdit(true);
 }
 
 export const KERNING_MIN = -200; // 1/1000 em, keep in step with TRACKING_MIN in app/main.py
@@ -227,7 +227,9 @@ function buildSpacingPanel({ kerning, leading, size }, onChange) {
 }
 
 export function startEditor({ bbox, text, size, color, bold, bg, kerning = 0, leading = null, onCommit }) {
-  if (state.editor && state.editor.__finish) state.editor.__finish(true);
+  endEdit(true);
+  // The page is fixed when the edit opens, so a later page change cannot send the text elsewhere.
+  const page = state.page;
   const s = scaleFactor();
   const ed = document.createElement("div");
   ed.className = "tl-edit";
@@ -311,12 +313,19 @@ export function startEditor({ bbox, text, size, color, bold, bg, kerning = 0, le
     tools.remove();
     backdrop.remove();
     if (state.editor === ed) state.editor = null;
+    if (state.edit && state.edit.el === ed) state.edit = null;
     if (!save) return;
-    const ops = onCommit(value, settings);
+    const ops = onCommit(value, settings, page);
     if (ops) runAction(() => applyOps(ops));
   };
-  ed.__finish = finish;
-  ed.__pending = () => onCommit(ed.innerText.replace(/\n+$/, ""), readSettings());
+  state.edit = {
+    el: ed,
+    page,
+    ln: null,
+    text: () => ed.innerText.replace(/\n+$/, ""),
+    pending: () => onCommit(ed.innerText.replace(/\n+$/, ""), readSettings(), page),
+    finish,
+  };
   spacingPanel.addEventListener("keydown", (e) => {
     e.stopPropagation();
     if (e.key === "Enter") {

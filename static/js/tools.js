@@ -1,8 +1,8 @@
-import { $, HIGHLIGHT_COLOR, api, getJson, hexToRgb, normRect, postJson, showError, state, t, toast } from "./core.js";
+import { $, HIGHLIGHT_COLOR, api, getJson, hexToRgb, normRect, postJson, showError, state, t, toast, endEdit } from "./core.js";
 import { renderAll, scaleFactor, svgShape, toPdf } from "./view.js";
 import { scrollSnapshot } from "./events.js";
 import { fontKey, startEditor } from "./editor.js";
-import { drawTextLayer, ensureLines, hideStyleBar } from "./selection.js";
+import { drawTextLayer, ensureLines, hideStyleBar, clearSelection } from "./selection.js";
 import { currentColor, currentSize } from "./toolbar.js";
 
 // ---------- drawing and tools ----------
@@ -12,7 +12,7 @@ export function setTool(tool) {
   state.tool = tool;
   document.querySelectorAll(".tool").forEach((b) => b.classList.toggle("active", b.dataset.tool === tool));
   $("#overlay").classList.toggle("active", tool !== "select" && tool !== "replace");
-  if (state.editor && state.editor.__finish) state.editor.__finish(true);
+  endEdit(true);
   drawTextLayer().catch(showError);
   if (tool === "replace") toast(t("hint_replace"));
   if (tool === "select" && state.info) toast(t("hint_select"));
@@ -36,8 +36,12 @@ export function drawPreview() {
   svg.replaceChildren(...(shape ? [shape] : []));
 }
 
+// Pages moving, turning or going away make the selection point at the wrong place.
+const RELAYOUT_OPS = new Set(["delete_page", "move_page", "rotate_page"]);
+
 export async function applyOps(ops) {
   state.keepScroll = scrollSnapshot();
+  if (ops.some((op) => RELAYOUT_OPS.has(op.type))) clearSelection();
   const res = await postJson(`/api/docs/${state.docId}/ops`, { ops });
   if (res.warnings && res.warnings.length) toast(t("overflow_warning"), true);
   state.info = await getJson(`/api/docs/${state.docId}`);

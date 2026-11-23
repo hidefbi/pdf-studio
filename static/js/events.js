@@ -1,4 +1,4 @@
-import { $, DOC_KEY, api, getJson, postJson, readAsDataUrl, setLocale, state, t, toast } from "./core.js";
+import { $, DOC_KEY, api, getJson, postJson, readAsDataUrl, setLocale, state, t, toast, endEdit, pendingEdit } from "./core.js";
 import { openDoc, renderAll, renderPage } from "./view.js";
 import { applyOps, bindCanvas, recognizePage, setTool } from "./tools.js";
 import { download, runAction, uploadPdf } from "./files.js";
@@ -56,7 +56,7 @@ export function bindEvents() {
 
   $("#delete-doc").addEventListener("click", () => runAction(async () => {
     if (!state.docId || !confirm(t("confirm_delete_doc"))) return;
-    if (state.editor && state.editor.__finish) state.editor.__finish(false);
+    endEdit(false);
     await api(`/api/docs/${state.docId}`, { method: "DELETE" });
     state.info = null;
     state.docId = null;
@@ -66,7 +66,7 @@ export function bindEvents() {
 
   // Leaving with an unconfirmed edit asks first, so the browser prompt decides instead of a silent commit.
   window.addEventListener("beforeunload", (e) => {
-    if (!state.editor || !state.editor.__pending || !state.editor.__pending()) return;
+    if (!pendingEdit()) return;
     e.preventDefault();
     e.returnValue = "";
   });
@@ -130,7 +130,13 @@ export function bindEvents() {
 
   $("#delete-page").addEventListener("click", () => {
     if (!state.info || !confirm(t("confirm_delete_page"))) return;
-    runAction(() => applyOps([{ type: "delete_page", page: state.page }]));
+    // Save an open edit first, then delete, in that order.
+    const pending = pendingEdit();
+    endEdit(false);
+    runAction(async () => {
+      if (pending) await applyOps(pending);
+      await applyOps([{ type: "delete_page", page: state.page }]);
+    });
   });
 
   $("#ocr-page").addEventListener("click", () => runAction(recognizePage));
@@ -181,6 +187,7 @@ export function goPage(delta) {
   if (!state.info) return;
   const next = state.page + delta;
   if (next < 0 || next >= state.info.pages.length) return;
+  endEdit(true);
   state.page = next;
   state.hit = null;
   renderPage();

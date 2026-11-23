@@ -1,4 +1,4 @@
-import { $, PALETTE, SIZE_STEPS, state } from "./core.js";
+import { $, PALETTE, SIZE_STEPS, state, endEdit } from "./core.js";
 import { scaleFactor } from "./view.js";
 
 // ---------- font size and color ----------
@@ -75,17 +75,17 @@ export function bindSizeAndColor() {
   $("#size").addEventListener("input", previewEditor);
   $("#size").addEventListener("change", previewEditor);
   $("#size").addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && state.editor) {
+    if (e.key === "Enter" && state.edit) {
       e.preventDefault();
-      state.editor.__finish(true);
+      endEdit(true);
     }
   });
   $("#color").addEventListener("input", (e) => setColor(e.target.value, false));
   document.querySelector(".toolbar").addEventListener("focusout", () => {
     setTimeout(() => {
       const active = document.activeElement;
-      if (!state.editor || (active && (active.closest(".toolbar") || state.editor.contains(active)))) return;
-      state.editor.__finish(true);
+      if (!state.edit || (active && (active.closest(".toolbar") || state.editor.contains(active)))) return;
+      endEdit(true);
     }, 0);
   });
 }

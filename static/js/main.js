@@ -1,7 +1,7 @@
 import { DOC_KEY, LANG_KEY, setLocale, showError, state } from "./core.js";
 import { openDoc, renderAll, scaleFactor } from "./view.js";
 import { setTool } from "./tools.js";
-import { selectionAlign } from "./selection.js";
+import { selectionAlign, drawTextLayer } from "./selection.js";
 import { loadFonts } from "./fonts.js";
 import { bindEvents } from "./events.js";
 import { bindSizeAndColor, buildToolbarControls } from "./toolbar.js";
@@ -37,6 +37,7 @@ async function init() {
 }
 
 // Test hook: lets the browser tests read app state. Not used by the app itself.
-window.pdfStudio = { state, openDoc, scaleFactor, selectionAlign };
+// Browser tests read state through this. Only an automated browser gets it.
+if (navigator.webdriver) window.pdfStudio = { state, openDoc, scaleFactor, selectionAlign, drawTextLayer };
 
 init().catch(showError);

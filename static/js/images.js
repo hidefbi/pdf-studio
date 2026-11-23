@@ -14,6 +14,13 @@ export async function ensureImages() {
   return state.imageCache.images;
 }
 
+// Each picture box remembers its picture here, instead of a property on the element.
+const boxImages = new WeakMap();
+
+export function imageOfBox(box) {
+  return boxImages.get(box) || null;
+}
+
 export function isImageSelected(img) {
   const sel = state.imageSel;
   return Boolean(sel && img && sel.page === state.page && sel.xref === img.xref && sameBox(sel.bbox, img.bbox));
@@ -50,6 +57,7 @@ export function selectImage(img) {
 }
 
 export function bindImageBox(box, img) {
+  boxImages.set(box, img);
   box.addEventListener("pointerdown", (e) => {
     if (e.button !== 0 || state.tool !== "select") return;
     e.preventDefault();
@@ -83,7 +91,7 @@ export function syncImageHandles(el, on) {
   ["nw", "ne", "sw", "se"].forEach((corner) => {
     const handle = document.createElement("div");
     handle.className = `img-handle ${corner}`;
-    handle.addEventListener("pointerdown", (e) => startImageResize(e, el.__img, corner));
+    handle.addEventListener("pointerdown", (e) => startImageResize(e, boxImages.get(el), corner));
     el.appendChild(handle);
   });
 }

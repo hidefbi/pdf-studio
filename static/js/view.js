@@ -1,6 +1,6 @@
-import { $, DOC_KEY, api, getJson, showError, state, t } from "./core.js";
+import { $, DOC_KEY, api, getJson, showError, state, t, toast } from "./core.js";
 import { restoreScroll } from "./events.js";
-import { drawTextLayer } from "./selection.js";
+import { drawTextLayer, clearSelection } from "./selection.js";
 
 // ---------- document view ----------
 
@@ -28,10 +28,17 @@ export function renderAll() {
   $("#delete-doc").disabled = !hasDoc;
   ["#insert-blank", "#stamp-open", "#toc-open", "#annots-open"].forEach((sel) => ($(sel).disabled = !hasDoc));
   if (hasDoc) clampPage();
-  const key = hasDoc ? `${state.docId}:${state.info.pages.length}` : "";
+  // Thumbnails follow the version, so an undo redraws them too.
+  const key = hasDoc ? `${state.docId}:${state.info.version}:${state.info.pages.length}` : "";
   if (key !== state.thumbsKey) {
     renderThumbs();
     state.thumbsKey = key;
+  }
+  // A page added or removed under the selection makes it point at the wrong page.
+  const layout = hasDoc ? `${state.docId}:${state.info.pages.length}` : "";
+  if (layout !== state.layoutKey) {
+    state.layoutKey = layout;
+    clearSelection();
   }
   renderPage();
 }
@@ -49,6 +56,7 @@ export function renderPage() {
     syncOverlay();
     drawTextLayer().catch(showError);
   };
+  img.onerror = () => toast(t("page_load_failed"), true);
   // Fixed first, so the page does not collapse while the new image loads.
   img.style.width = `${page.width * state.zoom}px`;
   img.style.height = `${page.height * state.zoom}px`;

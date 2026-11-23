@@ -1,4 +1,4 @@
-import { $, API_HEADERS, CLIENT_KEY, HEARTBEAT_MS, api, state } from "./core.js";
+import { $, API_HEADERS, CLIENT_KEY, HEARTBEAT_MS, api, state, endEdit } from "./core.js";
 
 // ---------- lifecycle ----------
 
@@ -62,9 +62,9 @@ export function startLifecycle() {
 
 // Commit an unconfirmed edit when the page is closed, so typed text is not lost.
 export function commitPendingOnExit() {
-  if (!state.editor || !state.editor.__pending || !state.docId) return;
-  const ops = state.editor.__pending();
-  state.editor.__finish(false);
+  if (!state.edit || !state.docId) return;
+  const ops = state.edit.pending();
+  endEdit(false);
   if (!ops) return;
   fetch(`/api/docs/${state.docId}/ops`, {
     method: "POST",

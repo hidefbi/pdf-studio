@@ -94,6 +94,7 @@
   "font_size": "フォントサイズ",
   "language": "言語",
   "font_family": "フォント",
+  "page_load_failed": "このページを表示できませんでした。",
   "custom_color": "カスタムカラー",
   "editor_save": "保存 (Enter)",
   "editor_cancel": "キャンセル (Esc)",
