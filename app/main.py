@@ -25,7 +25,7 @@ from starlette.background import BackgroundTask
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 
-from .linetext import remove_line, spacing_map
+from .linetext import remove_line, remove_lines, spacing_map
 from .version import VERSION
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -860,6 +860,24 @@ def _erase_line(doc: fitz.Document, op: Op) -> None:
     remove_line(doc, op.page, op.rect, op.origin)
 
 
+def _erase_run(doc: fitz.Document, ops: list) -> None:
+    # A run is erases on one page. They go in one pass, so a group move doesn't read the page once per line.
+    remove_lines(doc, ops[0].page, [(op.rect, op.origin) for op in ops])
+
+
+def _runs(ops: list) -> list:
+    """Groups consecutive erases on the same page. Every other op stands alone, in order."""
+    runs: list = []
+    for op in ops:
+        last = runs[-1] if runs else None
+        if (op.type == "erase_text" and last and last[0].type == "erase_text"
+                and last[0].page == op.page):
+            last.append(op)
+        else:
+            runs.append([op])
+    return runs
+
+
 def _page_at(doc: fitz.Document, index: int) -> fitz.Page:
     if not 0 <= index < doc.page_count:
         raise ValueError("page does not exist")
@@ -1428,7 +1446,12 @@ def search(doc_id: str, q: str = Query(..., min_length=1, max_length=200)):
 @app.post("/api/docs/{doc_id}/ops")
 def apply_ops(doc_id: str, body: OpsRequest):
     def action(doc: fitz.Document):
-        warnings = [w for w in (_apply_op(doc, op) for op in body.ops) if w]
+        warnings = []
+        for run in _runs(body.ops):
+            if run[0].type == "erase_text":
+                _erase_run(doc, run)
+                continue
+            warnings += [w for w in (_apply_op(doc, op) for op in run) if w]
         return {"ok": True, "warnings": warnings, "pages": doc.page_count}
     erases = any(op.type == "redact" for op in body.ops)
     result = _mutate(doc_id, action, keep_history=not erases)

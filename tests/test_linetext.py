@@ -11,7 +11,7 @@ from support import fixture
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.linetext import remove_line  # noqa: E402
+from app.linetext import remove_line, remove_lines  # noqa: E402
 
 CANVAS_FONT = Path("/mnt/skills/examples/canvas-design/canvas-fonts/BigShoulders-Regular.ttf")
 
@@ -282,3 +282,25 @@ def test_japanese_and_korean_built_in_fonts(tmp_path):
     assert japanese not in after
     assert korean in after
     assert "Account 12345" in after
+
+
+def test_a_batch_matches_removing_the_lines_one_by_one():
+    prefixes = ("Billing", "Row item 2", "Row item 7", "Invoice")
+    one_by_one = pymupdf.open(fixture("multi.pdf"))
+    for prefix in prefixes:
+        line = find(one_by_one, prefix)
+        remove_line(one_by_one, 0, line["bbox"], line["origin"])
+    batch = pymupdf.open(fixture("multi.pdf"))
+    chosen = [find(batch, prefix) for prefix in prefixes]
+    remove_lines(batch, 0, [(line["bbox"], line["origin"]) for line in chosen])
+    assert texts(batch) == texts(one_by_one)
+    assert len(texts(batch)) == len(texts(pymupdf.open(fixture("multi.pdf")))) - len(prefixes)
+
+
+def test_a_batch_with_one_unknown_line_changes_nothing():
+    doc = pymupdf.open(fixture("multi.pdf"))
+    before = texts(doc)
+    good = find(doc, "Billing")
+    with pytest.raises(ValueError):
+        remove_lines(doc, 0, [(good["bbox"], good["origin"]), ([0, 0, 1, 1], [1, 1])])
+    assert texts(doc) == before

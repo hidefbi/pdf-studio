@@ -684,30 +684,44 @@ def _same_chars(expected, actual) -> bool:
     return all(_take(pool, char, origin) for char, origin in expected)
 
 
-def _remove_line(doc: fitz.Document, index: int, bbox, origin) -> None:
+def _remove_lines(doc: fitz.Document, index: int, lines_in) -> None:
     page = doc[index]
     raw = page.get_text("rawdict")
-    line = _find_line(raw, bbox, origin)
-    if line is None:
-        _refuse()
-    targets = [(ch["c"], tuple(ch["origin"]), not ch["c"].strip()) for ch in line]
+    found = []
+    seen = set()
+    for bbox, origin in lines_in:
+        line = _find_line(raw, bbox, origin)
+        if line is None:
+            _refuse()
+        # The same line named twice is taken once.
+        key = tuple((ch["c"], tuple(ch["origin"])) for ch in line)
+        if key in seen:
+            continue
+        seen.add(key)
+        found.append((bbox, origin, line))
     before = _visible(raw)
 
+    # One parse of the page for all the lines, instead of one per line.
     data, ins_list, glyphs, per_ins = _walk_page(doc, page)
-    chosen = _match(targets, glyphs)
-    removed = set(chosen)
+    targets = []
+    removed = set()
+    for bbox, origin, line in found:
+        line_targets = [(ch["c"], tuple(ch["origin"]), not ch["c"].strip()) for ch in line]
+        targets.extend(line_targets)
+        mine = set(_match(line_targets, glyphs))
+        # MuPDF leaves out a glyph that overprints the one before it, so take
+        # those too when they sit on the line's baseline inside its box.
+        for model, indexes in per_ins.values():
+            if not any(gi in mine for gi in indexes):
+                continue
+            for gi in indexes:
+                g = glyphs[gi]
+                if (abs(g.origin[1] - origin[1]) <= MATCH_TOL
+                        and bbox[0] - MATCH_TOL <= g.origin[0] <= bbox[2] + MATCH_TOL):
+                    mine.add(gi)
+        removed |= mine
     if not removed:
         return
-    # MuPDF leaves out a glyph that overprints the one before it, so take
-    # those too when they sit on the line's baseline inside its box.
-    for model, indexes in per_ins.values():
-        if not any(gi in removed for gi in indexes):
-            continue
-        for gi in indexes:
-            g = glyphs[gi]
-            if (abs(g.origin[1] - origin[1]) <= MATCH_TOL
-                    and bbox[0] - MATCH_TOL <= g.origin[0] <= bbox[2] + MATCH_TOL):
-                removed.add(gi)
     for gi in removed:
         if not glyphs[gi].known or glyphs[gi].adjust is None:
             _refuse()
@@ -750,16 +764,26 @@ def _remove_line(doc: fitz.Document, index: int, bbox, origin) -> None:
         _refuse()
 
 
+def remove_lines(doc: fitz.Document, index: int, lines_in) -> None:
+    """Takes several lines off page `index` in one pass. Each entry is (bbox, origin).
+
+    Raises ValueError when that cannot be done without touching other text.
+    Any refused line refuses the whole batch, so nothing is half done.
+    """
+    for bbox, origin in lines_in:
+        if not origin or len(origin) != 2 or not bbox or len(bbox) != 4:
+            _refuse()
+    try:
+        _remove_lines(doc, index, lines_in)
+    except ValueError:
+        raise
+    except Exception:
+        _refuse()
+
+
 def remove_line(doc: fitz.Document, index: int, bbox, origin) -> None:
     """Takes the line at bbox and origin off page `index`.
 
     Raises ValueError when that cannot be done without touching other text.
     """
-    if not origin or len(origin) != 2 or not bbox or len(bbox) != 4:
-        _refuse()
-    try:
-        _remove_line(doc, index, bbox, origin)
-    except ValueError:
-        raise
-    except Exception:
-        _refuse()
+    remove_lines(doc, index, [(bbox, origin)])
