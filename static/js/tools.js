@@ -2,7 +2,8 @@ import { $, HIGHLIGHT_COLOR, api, getJson, hexToRgb, normRect, postJson, showErr
 import { renderAll, scaleFactor, svgShape, toPdf } from "./view.js";
 import { scrollSnapshot } from "./events.js";
 import { fontKey, startEditor } from "./editor.js";
-import { drawTextLayer, ensureLines, hideStyleBar, clearSelection } from "./selection.js";
+import { drawTextLayer, ensureLines, clearSelection } from "./selection.js";
+import { hideStyleBar } from "./stylebar.js";
 import { currentColor, currentSize } from "./toolbar.js";
 
 // ---------- drawing and tools ----------

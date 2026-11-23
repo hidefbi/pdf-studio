@@ -1,12 +1,13 @@
-import { $, DOC_KEY, api, getJson, postJson, readAsDataUrl, setLocale, state, t, toast, endEdit, pendingEdit } from "./core.js";
-import { openDoc, renderAll, renderPage } from "./view.js";
-import { applyOps, bindCanvas, recognizePage, setTool } from "./tools.js";
+import { $, DOC_KEY, api, endEdit, getJson, pendingEdit, postJson, readAsDataUrl, setLocale, state, t, toast } from "./core.js";
+import { closeReadonlyDialog, exportReadonly, openReadonlyDialog } from "./dialogs.js";
+import { onPagePress } from "./editor.js";
 import { download, runAction, uploadPdf } from "./files.js";
 import { closeFontDialog, deleteFont, openFontDialog, renderFontSelect, uploadFonts } from "./fonts.js";
 import { runSearch } from "./search.js";
-import { onPagePress } from "./editor.js";
-import { applyStyle, bindStyleBar } from "./selection.js";
-import { closeReadonlyDialog, exportReadonly, openReadonlyDialog } from "./dialogs.js";
+import { bindSelectionKeys } from "./selection.js";
+import { applyStyle, bindStyleBar } from "./stylebar.js";
+import { applyOps, bindCanvas, recognizePage, setTool } from "./tools.js";
+import { openDoc, renderAll, renderPage } from "./view.js";
 
 // ---------- events ----------
 
@@ -141,6 +142,7 @@ export function bindEvents() {
 
   $("#ocr-page").addEventListener("click", () => runAction(recognizePage));
   bindStyleBar();
+  bindSelectionKeys();
   $("#extract").addEventListener("click", () => {
     if (!state.docId) return;
     const spec = prompt(t("extract_prompt"), `1-${state.info.pages.length}`);

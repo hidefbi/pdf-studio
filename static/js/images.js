@@ -3,7 +3,8 @@ import { scaleFactor } from "./view.js";
 import { applyOps } from "./tools.js";
 import { runAction } from "./files.js";
 import { placeBox } from "./editor.js";
-import { SELECT_SLOP, hideStyleBar, shiftBox, syncSelectionDom } from "./selection.js";
+import { SELECT_SLOP, shiftBox, syncSelectionDom } from "./selection.js";
+import { hideStyleBar } from "./stylebar.js";
 
 export async function ensureImages() {
   const key = `${state.docId}:${state.page}:${state.info.version}`;
