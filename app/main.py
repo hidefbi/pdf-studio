@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import re
@@ -13,6 +14,7 @@ import time
 import uuid
 import zipfile
 from collections import OrderedDict
+from datetime import date
 from pathlib import Path
 from typing import Any, Callable, Optional
 from urllib.parse import quote
@@ -1109,7 +1111,8 @@ def doc_info(doc_id: str):
         ]
     finally:
         doc.close()
-    return {"id": doc_id, "name": meta["name"], "pages": pages, **_history_state(meta)}
+    return {"id": doc_id, "name": meta["name"], "pages": pages, "watermark_rev": _watermark_rev(meta),
+            **_history_state(meta)}
 
 
 # Caches are keyed by document version, so an edit, undo or redo never serves stale pages.
@@ -1162,15 +1165,20 @@ def _forget_doc(doc_id: str) -> None:
 
 
 @app.get("/api/docs/{doc_id}/pages/{index}.png")
-def render_page(doc_id: str, index: int, zoom: float = Query(2.0, ge=0.2, le=MAX_RENDER_SCALE)):
-    key = (doc_id, _doc_version(doc_id), index, round(zoom, 2))
+def render_page(doc_id: str, index: int, zoom: float = Query(2.0, ge=0.2, le=MAX_RENDER_SCALE),
+                watermark: bool = Query(True)):
+    path = _doc_dir(doc_id)
+    meta = _read_meta(path)
+    rules = _enabled_watermarks(meta) if watermark else []
+    key = (doc_id, meta.get("version", 0), index, round(zoom, 2), _watermark_rev(meta) if rules else "none")
     data = _render_get(key)
     if data is None:
-        path = _doc_dir(doc_id)
         doc = fitz.open(path / "current.pdf")
         try:
             _check_index(doc, index)
             _check_pixels(doc[index], zoom)
+            if rules:
+                _draw_watermarks(doc, rules, Path(meta["name"]).stem or "document", only=index)
             data = doc[index].get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False).tobytes("png")
         finally:
             doc.close()
@@ -1594,15 +1602,26 @@ def _to_docx(pdf_path: Path, stem: str) -> tuple[bytes, str]:
 
 @app.get("/api/docs/{doc_id}/export/{fmt}")
 def export(doc_id: str, fmt: str,
-           page: int = Query(0, ge=0), zoom: float = Query(2.0, ge=0.5, le=4)):
+           page: int = Query(0, ge=0), zoom: float = Query(2.0, ge=0.5, le=4),
+           watermark: bool = Query(True)):
     path = _doc_dir(doc_id)
-    stem = Path(_read_meta(path)["name"]).stem or "document"
+    meta = _read_meta(path)
+    stem = Path(meta["name"]).stem or "document"
     pdf_path = path / "current.pdf"
+    rules = _enabled_watermarks(meta) if watermark else []
 
     if fmt == "pdf":
-        return _file_download(pdf_path, "application/pdf", f"{stem}.pdf")
+        if not rules:
+            return _file_download(pdf_path, "application/pdf", f"{stem}.pdf")
+        out = _watermarked_copy(pdf_path, rules, stem)
+        return _file_download(out, "application/pdf", f"{stem}.pdf", remove=True)
     if fmt == "docx":
-        data, name = _to_docx(pdf_path, stem)
+        src = _watermarked_copy(pdf_path, rules, stem) if rules else pdf_path
+        try:
+            data, name = _to_docx(src, stem)
+        finally:
+            if rules:
+                src.unlink(missing_ok=True)
         return _download(data, DOCX_MEDIA, name)
 
     doc = fitz.open(pdf_path)
@@ -1613,9 +1632,13 @@ def export(doc_id: str, fmt: str,
         if fmt == "png":
             _check_index(doc, page)
             _check_pixels(doc[page], zoom)
+            if rules:
+                _draw_watermarks(doc, rules, stem)
             data = doc[page].get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False).tobytes("png")
             return _download(data, "image/png", f"{stem}-p{page + 1}.png")
         if fmt == "images":
+            if rules:
+                _draw_watermarks(doc, rules, stem)
             # Write the zip to disk, so a long document does not fill memory.
             filename = f"{stem}-images.zip"
             fd, name = tempfile.mkstemp(prefix="pdfstudio-", dir=DATA_DIR, suffix=".zip")
@@ -1648,29 +1671,39 @@ def _download(data: bytes, media: str, filename: str) -> Response:
     )
 
 
-def _file_download(path: Path, media: str, filename: str) -> FileResponse:
-    # Streamed from disk, so a big PDF is not read into memory first.
+def _file_download(path: Path, media: str, filename: str, remove: bool = False) -> FileResponse:
+    # Streamed from disk, so a big PDF is not read into memory first. A temporary copy is removed after sending.
     return FileResponse(
         path,
         media_type=media,
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+        background=BackgroundTask(os.unlink, path) if remove else None,
     )
 
 
 # ---------- read-only export (Adobe-style "Restrict Editing and Printing") ----------
 
+# MuPDF refuses longer passwords with a ValueError, which used to surface as a 500.
+PDF_PASSWORD_CHARS = 40
+
+
 class ReadonlyRequest(BaseModel):
-    owner_password: str = Field(min_length=6, max_length=128)
-    open_password: Optional[str] = Field(default=None, max_length=128)
+    owner_password: str = Field(min_length=6)
+    open_password: Optional[str] = None
     printing: str = Field(default="high", pattern="^(none|low|high)$")
     changes: str = Field(default="none", pattern="^(none|forms|all)$")
     allow_copy: bool = True
+    watermarks: bool = True
 
 
 @app.post("/api/docs/{doc_id}/export/readonly")
 def export_readonly(doc_id: str, body: ReadonlyRequest):
+    if any(len(pw or "") > PDF_PASSWORD_CHARS for pw in (body.owner_password, body.open_password)):
+        raise HTTPException(400, "password must be 40 characters or less")
     path = _doc_dir(doc_id)
-    stem = Path(_read_meta(path)["name"]).stem or "document"
+    meta = _read_meta(path)
+    stem = Path(meta["name"]).stem or "document"
+    rules = _enabled_watermarks(meta) if body.watermarks else []
     perm = int(fitz.PDF_PERM_ACCESSIBILITY)  # screen readers are always allowed
     if body.printing in ("low", "high"):
         perm |= fitz.PDF_PERM_PRINT
@@ -1684,6 +1717,8 @@ def export_readonly(doc_id: str, body: ReadonlyRequest):
         perm |= fitz.PDF_PERM_COPY
     doc = fitz.open(path / "current.pdf")
     try:
+        if rules:
+            _draw_watermarks(doc, rules, stem)
         data = doc.tobytes(
             garbage=3,
             deflate=True,
@@ -1699,25 +1734,31 @@ def export_readonly(doc_id: str, body: ReadonlyRequest):
 
 # ---------- page, bookmark and annotation tools ----------
 
-STAMP_POSITIONS = {"top-left", "top-center", "top-right", "bottom-left", "bottom-center", "bottom-right", "center"}
-STAMP_MARGIN = 36.0
-HEX_COLOR = re.compile(r"#[0-9a-fA-F]{6}")
+WM_MAX_RULES = 5
+WM_MAX_GRID = 10  # rows and columns per rule
+WM_MAX_COPIES = 300  # rows x columns, summed over the enabled rules
+WM_PAGES_PATTERN = r"^(all|\d+(-\d+)?(,\d+(-\d+)?)*)$"
 
 
 class BlankPageRequest(BaseModel):
     after: int = Field(ge=-1)
 
 
-class StampRequest(BaseModel):
+class WatermarkRule(BaseModel):
     text: str = Field(min_length=1, max_length=200)
-    where: str = "bottom-center"
-    size: float = Field(10, ge=4, le=200)
-    color: str = "#666666"
-    opacity: float = Field(1.0, ge=0.05, le=1)
-    angle: float = Field(0, ge=-90, le=90)
-    pages: str = "all"
-    page: int = Field(0, ge=0)
-    behind: bool = False
+    rows: int = Field(2, ge=1, le=WM_MAX_GRID)
+    cols: int = Field(2, ge=1, le=WM_MAX_GRID)
+    size: float = Field(36, ge=4, le=200)
+    color: str = Field("#888888", pattern=r"^#[0-9a-fA-F]{6}$")
+    opacity: float = Field(0.3, ge=0.05, le=1)
+    angle: float = Field(30, ge=-90, le=90)
+    pages: str = Field("all", max_length=200, pattern=WM_PAGES_PATTERN)
+    layer: str = Field("above", pattern="^(above|below)$")
+    enabled: bool = True
+
+
+class WatermarkList(BaseModel):
+    rules: list[WatermarkRule] = Field(default_factory=list, max_length=WM_MAX_RULES)
 
 
 class TocItem(BaseModel):
@@ -1744,41 +1785,76 @@ def _insert_blank(doc: fitz.Document, after: int) -> int:
     return doc.page_count
 
 
-def _stamp_pages(doc: fitz.Document, body: StampRequest, name: str) -> int:
-    if body.where not in STAMP_POSITIONS:
-        raise HTTPException(400, "unknown position")
-    if not HEX_COLOR.fullmatch(body.color):
-        raise HTTPException(400, "color must look like #rrggbb")
-    if body.pages not in ("all", "current"):
-        raise HTTPException(400, "pages must be all or current")
-    targets = list(range(doc.page_count)) if body.pages == "all" else [body.page]
-    rgb = tuple(int(body.color[i:i + 2], 16) / 255 for i in (1, 3, 5))
-    for index in targets:
-        _check_index(doc, index)
-        page = doc[index]
-        text = (body.text.replace("{page}", str(index + 1))
-                .replace("{total}", str(doc.page_count))
-                .replace("{name}", name))
-        fontname = _cjk_key(text) if any(ord(ch) > 127 for ch in text) else "helv"
-        width = fitz.get_text_length(text, fontname=fontname, fontsize=body.size)
-        rect = page.rect
-        shape = page.new_shape()
-        if body.where == "center":
-            cx, cy = rect.width / 2, rect.height / 2
-            shape.insert_text(
-                fitz.Point(cx - width / 2, cy + body.size / 3), text,
-                fontsize=body.size, fontname=fontname, color=rgb, fill_opacity=body.opacity,
-                morph=(fitz.Point(cx, cy), fitz.Matrix(body.angle)),
-            )
-        else:
-            vertical, horizontal = body.where.split("-")
-            x = {"left": STAMP_MARGIN, "center": (rect.width - width) / 2,
-                 "right": rect.width - STAMP_MARGIN - width}[horizontal]
-            y = STAMP_MARGIN + body.size if vertical == "top" else rect.height - STAMP_MARGIN
-            shape.insert_text(fitz.Point(x, y), text, fontsize=body.size, fontname=fontname,
-                              color=rgb, fill_opacity=body.opacity)
-        shape.commit(overlay=not body.behind)
-    return len(targets)
+def _enabled_watermarks(meta: dict) -> list[dict]:
+    return [rule for rule in meta.get("watermarks", []) if rule.get("enabled", True)]
+
+
+def _watermark_pages(spec: str, count: int) -> list[int]:
+    if spec == "all":
+        return list(range(count))
+    picked = set()
+    for part in spec.split(","):
+        first, _, last = part.partition("-")
+        low, high = int(first), int(last or first)
+        picked.update(i - 1 for i in range(max(low, 1), min(high, count) + 1))
+    return sorted(picked)
+
+
+def _watermark_text(text: str, index: int, total: int, name: str) -> str:
+    return (text.replace("{page}", str(index + 1))
+            .replace("{total}", str(total))
+            .replace("{name}", name)
+            .replace("{date}", date.today().isoformat()))
+
+
+def _watermark_rev(meta: dict) -> str:
+    """Changes with the rules, the name and the date, so cached page renders are not served stale."""
+    rules = _enabled_watermarks(meta)
+    if not rules:
+        return "none"
+    raw = json.dumps([meta["name"], date.today().isoformat(), rules], sort_keys=True)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
+
+
+def _draw_watermarks(doc: fitz.Document, rules: list[dict], name: str, only: Optional[int] = None) -> None:
+    """Draws every rule as a grid of copies on each page it covers. Only the in-memory document changes."""
+    for rule in rules:
+        rgb = tuple(int(rule["color"][i:i + 2], 16) / 255 for i in (1, 3, 5))
+        size = rule["size"]
+        for index in _watermark_pages(rule["pages"], doc.page_count):
+            if only is not None and index != only:
+                continue
+            page = doc[index]
+            text = _watermark_text(rule["text"], index, doc.page_count, name)
+            fontname = _cjk_key(text) if any(ord(ch) > 127 for ch in text) else "helv"
+            width = fitz.get_text_length(text, fontname=fontname, fontsize=size)
+            rect = page.rect
+            shape = page.new_shape()
+            for row in range(rule["rows"]):
+                for col in range(rule["cols"]):
+                    cx = rect.width * (col + 0.5) / rule["cols"]
+                    cy = rect.height * (row + 0.5) / rule["rows"]
+                    shape.insert_text(
+                        fitz.Point(cx - width / 2, cy + size / 3), text,
+                        fontsize=size, fontname=fontname, color=rgb, fill_opacity=rule["opacity"],
+                        morph=(fitz.Point(cx, cy), fitz.Matrix(rule["angle"])),
+                    )
+            shape.commit(overlay=rule["layer"] == "above")
+
+
+def _watermarked_copy(pdf_path: Path, rules: list[dict], name: str) -> Path:
+    fd, out = tempfile.mkstemp(prefix="pdfstudio-", dir=DATA_DIR, suffix=".pdf")
+    os.close(fd)
+    doc = fitz.open(pdf_path)
+    try:
+        _draw_watermarks(doc, rules, name)
+        doc.save(out, garbage=3, deflate=True)
+    except BaseException:
+        os.unlink(out)
+        raise
+    finally:
+        doc.close()
+    return Path(out)
 
 
 @app.post("/api/docs/{doc_id}/pages/blank")
@@ -1786,10 +1862,23 @@ def page_blank(doc_id: str, body: BlankPageRequest):
     return {"pages": _mutate(doc_id, lambda doc: _insert_blank(doc, body.after))}
 
 
-@app.post("/api/docs/{doc_id}/stamp")
-def page_stamp(doc_id: str, body: StampRequest):
-    name = Path(_read_meta(_doc_dir(doc_id))["name"]).stem or "document"
-    return {"stamped": _mutate(doc_id, lambda doc: _stamp_pages(doc, body, name))}
+@app.get("/api/docs/{doc_id}/watermarks")
+def watermarks_read(doc_id: str):
+    return {"rules": _read_meta(_doc_dir(doc_id)).get("watermarks", [])}
+
+
+@app.put("/api/docs/{doc_id}/watermarks")
+def watermarks_save(doc_id: str, body: WatermarkList):
+    # Rules live in the document folder, not the PDF, so the version and history stay as they are.
+    path = _doc_dir(doc_id)
+    copies = sum(rule.rows * rule.cols for rule in body.rules if rule.enabled)
+    if copies > WM_MAX_COPIES:
+        raise HTTPException(400, "too many watermark copies, 300 at most across enabled rules")
+    with _doc_lock(doc_id):
+        meta = _read_meta(path)
+        meta["watermarks"] = [rule.model_dump() for rule in body.rules]
+        _write_meta(path, meta)
+    return {"rules": meta["watermarks"]}
 
 
 @app.get("/api/docs/{doc_id}/toc")

@@ -88,6 +88,10 @@ export function bindEvents() {
       return;
     }
     if (!fmt || !state.docId) return;
+    if (fmt === "pdf-plain") {
+      runAction(() => download(`/api/docs/${state.docId}/export/pdf?watermark=0`, "export.pdf"));
+      return;
+    }
     let url = `/api/docs/${state.docId}/export/${fmt}`;
     if (fmt === "png") url += `?page=${state.page}`;
     runAction(() => download(url, `export.${fmt === "images" ? "zip" : fmt}`));

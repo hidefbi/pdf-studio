@@ -281,31 +281,109 @@ def test_blank_pages_insert_after_index(server):
     assert call(server.base, "POST", f"/api/docs/{doc}/pages/blank", {"after": 40})[0] == 404
 
 
-def test_page_number_and_header_stamps(server):
-    doc = doc_id_of(server.base, fixture("embedded.pdf"))
-    call(server.base, "POST", f"/api/docs/{doc}/pages/blank", {"after": 0})
-    call(server.base, "POST", f"/api/docs/{doc}/pages/blank", {"after": -1})
-    status, _ = call(server.base, "POST", f"/api/docs/{doc}/stamp",
-                     {"text": "{page} / {total}", "where": "bottom-center", "size": 10, "color": "#666666"})
-    assert status == 200
-    saved = saved_pdf(server.base, doc)
-    assert len(saved) == 3
-    assert "2 / 3" in word_text(saved, 1) and "3 / 3" in word_text(saved, 2)
-    status, _ = call(server.base, "POST", f"/api/docs/{doc}/stamp",
-                     {"text": "{name} header", "where": "top-left", "pages": "current", "page": 0})
-    assert status == 200
-    saved = saved_pdf(server.base, doc)
-    assert "header" in word_text(saved, 0) and "header" not in word_text(saved, 1)
+def watermark_rules(base, doc, rules):
+    return call(base, "PUT", f"/api/docs/{doc}/watermarks", {"rules": rules})
 
 
-def test_watermark_accepts_cjk_and_rotation_and_validates_input(server):
+def raw_get(base, path):
+    with urllib.request.urlopen(base + path) as res:
+        return res.read()
+
+
+def read_only_export(base, doc, body):
+    """Returns (status, bytes) for the read-only export, which is a file and not JSON."""
+    req = urllib.request.Request(base + f"/api/docs/{doc}/export/readonly", data=json.dumps(body).encode(),
+                                 method="POST", headers={"X-PDF-Studio": "1", "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req) as res:
+            return res.status, res.read()
+    except urllib.error.HTTPError as err:
+        return err.code, err.read()
+
+
+def three_pages(base, doc):
+    call(base, "POST", f"/api/docs/{doc}/pages/blank", {"after": 0})
+    call(base, "POST", f"/api/docs/{doc}/pages/blank", {"after": -1})
+
+
+def test_watermark_rules_are_saved_and_checked(server):
     doc = doc_id_of(server.base, fixture("embedded.pdf"))
-    status, _ = call(server.base, "POST", f"/api/docs/{doc}/stamp",
-                     {"text": "\u673a\u5bc6 DRAFT", "where": "center", "angle": 45, "opacity": 0.3,
-                      "behind": True, "color": "#cc0000", "size": 48})
+    status, _ = watermark_rules(server.base, doc, [{"text": "DRAFT", "rows": 2, "cols": 3}])
     assert status == 200
-    assert call(server.base, "POST", f"/api/docs/{doc}/stamp", {"text": "x", "where": "middle"})[0] == 400
-    assert call(server.base, "POST", f"/api/docs/{doc}/stamp", {"text": "x", "color": "red"})[0] == 400
+    rule = call(server.base, "GET", f"/api/docs/{doc}/watermarks")[1]["rules"][0]
+    assert (rule["text"], rule["rows"], rule["cols"], rule["angle"], rule["layer"]) == ("DRAFT", 2, 3, 30, "above")
+    bad = [
+        {"text": "x", "color": "red"},
+        {"text": "x", "layer": "middle"},
+        {"text": "x", "pages": "one"},
+        {"text": "x", "rows": 11},
+        {"text": "x", "opacity": 0},
+    ]
+    for item in bad:
+        assert watermark_rules(server.base, doc, [item])[0] == 422, item
+    assert watermark_rules(server.base, doc, [{"text": "x"}] * 6)[0] == 422
+    big = {"text": "x", "rows": 10, "cols": 10}
+    assert watermark_rules(server.base, doc, [big] * 4)[0] == 400
+    assert watermark_rules(server.base, doc, [big] * 3 + [dict(big, enabled=False)])[0] == 200
+
+
+def test_watermark_grid_is_drawn_on_export_and_not_saved_into_the_document(server):
+    doc = doc_id_of(server.base, fixture("embedded.pdf"))
+    three_pages(server.base, doc)
+    before = call(server.base, "GET", f"/api/docs/{doc}")[1]
+    status, _ = watermark_rules(server.base, doc, [{"text": "SECRET {page}/{total}", "rows": 2, "cols": 3,
+                                                    "size": 12, "angle": 0}])
+    assert status == 200
+    after = call(server.base, "GET", f"/api/docs/{doc}")[1]
+    assert (after["undo_steps"], len(after["pages"])) == (before["undo_steps"], 3)
+    saved = saved_pdf(server.base, doc)
+    assert saved.page_count == 3
+    for index in range(3):
+        assert word_text(saved, index).count("SECRET") == 6, word_text(saved, index)
+    assert "SECRET 2/3" in word_text(saved, 1)
+
+
+def test_watermark_pages_range_and_disabled_rule(server):
+    doc = doc_id_of(server.base, fixture("embedded.pdf"))
+    three_pages(server.base, doc)
+    watermark_rules(server.base, doc, [{"text": "ONLY", "rows": 1, "cols": 1, "pages": "2-3,9"},
+                                       {"text": "OFF", "rows": 1, "cols": 1, "enabled": False}])
+    saved = saved_pdf(server.base, doc)
+    assert "ONLY" not in word_text(saved, 0)
+    assert "ONLY" in word_text(saved, 1) and "ONLY" in word_text(saved, 2)
+    assert all("OFF" not in word_text(saved, i) for i in range(3))
+
+
+def test_positive_angle_rises_to_the_right(server):
+    doc = doc_id_of(server.base, fixture("embedded.pdf"))
+    watermark_rules(server.base, doc, [{"text": "RISE7", "rows": 1, "cols": 1, "angle": 30, "size": 20}])
+    saved = saved_pdf(server.base, doc)
+    lines = [line for block in saved[0].get_text("dict")["blocks"] for line in block.get("lines", [])
+             if any("RISE7" in span["text"] for span in line["spans"])]
+    assert lines and lines[0]["dir"][1] < 0  # y grows downwards on the page, so a negative value rises
+
+
+def test_watermark_accepts_cjk_text_and_date(server):
+    doc = doc_id_of(server.base, fixture("embedded.pdf"))
+    status, _ = watermark_rules(server.base, doc, [{"text": "\u673a\u5bc6 {date}", "rows": 1, "cols": 1}])
+    assert status == 200
+    assert "\u673a\u5bc6" in word_text(saved_pdf(server.base, doc), 0)
+
+
+def test_watermark_is_in_read_only_export(server):
+    doc = doc_id_of(server.base, fixture("embedded.pdf"))
+    watermark_rules(server.base, doc, [{"text": "ONLY", "rows": 1, "cols": 1}])
+    status, data = read_only_export(server.base, doc, {"owner_password": "ownerpw2", "printing": "none",
+                                                      "changes": "none", "allow_copy": False})
+    assert status == 200
+    assert "ONLY" in word_text(pymupdf.open(stream=data, filetype="pdf"), 0)
+
+
+def test_read_only_export_works_with_every_option_turned_off(server):
+    doc = doc_id_of(server.base, fixture("embedded.pdf"))
+    status, data = read_only_export(server.base, doc, {"owner_password": "ownerpw2", "open_password": "openpw1",
+                                                      "printing": "none", "changes": "none", "allow_copy": False})
+    assert status == 200 and data.startswith(b"%PDF")
 
 
 def test_bookmarks_round_trip_and_validation(server):
@@ -334,3 +412,48 @@ def test_comments_list_edit_undo_and_delete(server, annotated_pdf):
     assert call(server.base, "DELETE", f"/api/docs/{doc}/annotations/{xref}")[0] == 200
     assert call(server.base, "GET", f"/api/docs/{doc}/annotations")[1]["items"] == []
     assert call(server.base, "PATCH", f"/api/docs/{doc}/annotations/999999", {"content": "x"})[0] == 404
+
+
+def test_read_only_export_limits_passwords_to_40_characters(server):
+    doc = doc_id_of(server.base, fixture("embedded.pdf"))
+    base_body = {"printing": "none", "changes": "none", "allow_copy": False}
+    status, data = read_only_export(server.base, doc, dict(base_body, owner_password="a" * 40))
+    assert status == 200 and data.startswith(b"%PDF")
+    status, data = read_only_export(server.base, doc, dict(base_body, owner_password="\u4e2d" * 40))
+    assert status == 200
+    status, data = read_only_export(server.base, doc, dict(base_body, owner_password="a" * 41))
+    assert status == 400 and b"40 characters" in data
+    status, data = read_only_export(server.base, doc, dict(base_body, owner_password="ownerpw2",
+                                                          open_password="b" * 41))
+    assert status == 400
+
+
+def test_page_images_show_the_rules_and_follow_changes(server):
+    doc = doc_id_of(server.base, fixture("embedded.pdf"))
+    watermark_rules(server.base, doc, [{"text": "ALPHA", "rows": 1, "cols": 1, "size": 30}])
+    rev_before = call(server.base, "GET", f"/api/docs/{doc}")[1]["watermark_rev"]
+    shown = raw_get(server.base, f"/api/docs/{doc}/pages/0.png?zoom=1")
+    clean = raw_get(server.base, f"/api/docs/{doc}/pages/0.png?zoom=1&watermark=0")
+    assert shown != clean
+    watermark_rules(server.base, doc, [{"text": "BETA", "rows": 1, "cols": 1, "size": 30}])
+    assert call(server.base, "GET", f"/api/docs/{doc}")[1]["watermark_rev"] != rev_before
+    assert raw_get(server.base, f"/api/docs/{doc}/pages/0.png?zoom=1") != shown
+
+
+def test_export_can_leave_watermarks_out(server):
+    doc = doc_id_of(server.base, fixture("embedded.pdf"))
+    watermark_rules(server.base, doc, [{"text": "KEEPOUT", "rows": 1, "cols": 1}])
+    with_marks = pymupdf.open(stream=raw_get(server.base, f"/api/docs/{doc}/export/pdf"), filetype="pdf")
+    plain = pymupdf.open(stream=raw_get(server.base, f"/api/docs/{doc}/export/pdf?watermark=0"), filetype="pdf")
+    assert "KEEPOUT" in word_text(with_marks, 0)
+    assert "KEEPOUT" not in word_text(plain, 0)
+
+
+def test_read_only_export_can_leave_watermarks_out(server):
+    doc = doc_id_of(server.base, fixture("embedded.pdf"))
+    watermark_rules(server.base, doc, [{"text": "MAYBE", "rows": 1, "cols": 1}])
+    base_body = {"owner_password": "ownerpw2", "printing": "none", "changes": "none", "allow_copy": False}
+    status, data = read_only_export(server.base, doc, dict(base_body, watermarks=False))
+    assert status == 200 and "MAYBE" not in word_text(pymupdf.open(stream=data, filetype="pdf"), 0)
+    status, data = read_only_export(server.base, doc, base_body)
+    assert status == 200 and "MAYBE" in word_text(pymupdf.open(stream=data, filetype="pdf"), 0)

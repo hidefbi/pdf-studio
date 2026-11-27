@@ -7,6 +7,7 @@ import { bindEvents } from "./events.js";
 import { bindSizeAndColor, buildToolbarControls } from "./toolbar.js";
 import { startLifecycle } from "./lifecycle.js";
 import { bindPageTools } from "./dialogs.js";
+import { bindWatermarks } from "./watermark.js";
 import { bindModals } from "./modal.js";
 import { bindAbout } from "./about.js";
 
@@ -16,6 +17,7 @@ async function init() {
   startLifecycle();
   bindEvents();
   bindPageTools();
+  bindWatermarks();
   bindModals();
   bindAbout();
   buildToolbarControls();

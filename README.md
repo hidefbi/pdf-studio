@@ -30,7 +30,7 @@ It started as a way to change a few lines in a PDF without paying for a full des
 
 - Rotate, delete, insert blank pages, and extract a range of pages.
 - Merge several PDFs into one.
-- Add headers, footers, and page numbers, or a watermark.
+- Add headers, footers and page numbers. Watermarks are rules saved with the document: up to five, each a grid of copies on the pages you choose. They show on the pages and go into exports by default. You can hide them on screen, or leave them out of a PDF export.
 - Edit bookmarks.
 - Undo and redo. The history is saved with the document, so it still works after a reload. Redacting clears it.
 

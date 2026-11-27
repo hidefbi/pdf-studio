@@ -102,6 +102,12 @@ input[type="color"] { width: 36px; height: 30px; border: 1px solid var(--line); 
 #overlay.active { pointer-events: auto; cursor: crosshair; }
 #overlay .preview { fill: rgba(10,102,194,.12); stroke: var(--accent); stroke-dasharray: 4 3; }
 #overlay .hit { fill: rgba(255,190,0,.3); stroke: #e09600; }
+#wm-preview { position: absolute; top: 0; left: 0; overflow: hidden; pointer-events: none; }
+#wm-preview span { position: absolute; white-space: nowrap; line-height: 1; }
+.wm-rule-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.wm-rule-bar .grow { flex: 1 1 180px; }
+.wm-fields { border: 0; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px 12px; min-width: 0; }
+.wm-fields:disabled { opacity: .5; }
 
 .toast {
   position: fixed;

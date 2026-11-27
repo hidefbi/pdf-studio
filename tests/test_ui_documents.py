@@ -68,23 +68,27 @@ def test_reload_restores_and_delete_clears(ui, server):
     assert call(server.base, "GET", f"/api/docs/{doc}")[0] == 404
 
 
-def test_header_footer_dialog_applies_to_pages(ui, server):
+def test_watermark_dialog_saves_rules_and_previews_the_grid(ui, server):
     page = ui.page
     doc = open_file(page, fixture("embedded.pdf"))
-    page.click("#insert-blank")
-    page.wait_for_timeout(900)
-    page.click("#stamp-open")
+    page.click("#watermark-open")
     page.wait_for_timeout(300)
-    assert page.is_visible("#stamp-dialog")
-    assert page.input_value("#st-text") == "{page} / {total}"
-    page.select_option("#st-where", "top-right")
-    page.fill("#st-text", "Report {name}")
-    page.click("#stamp-form button[type=submit]")
+    assert page.is_visible("#watermark-dialog")
+    assert page.is_disabled("#wm-text")
+    page.click("#wm-add")
+    assert page.input_value("#wm-text") == "{name}"
+    page.fill("#wm-text", "Draft {page}")
+    page.fill("#wm-rows", "2")
+    page.fill("#wm-cols", "3")
+    page.wait_for_timeout(100)
+    assert page.locator("#wm-preview span").count() == 6
+    page.click("#watermark-form button[type=submit]")
     page.wait_for_timeout(900)
-    assert not page.is_visible("#stamp-dialog")
-    assert "Added to pages" in page.inner_text("#toast")
-    info = call(server.base, "GET", f"/api/docs/{doc}")[1]
-    assert len(info["pages"]) == 2
+    assert not page.is_visible("#watermark-dialog")
+    assert "Watermarks saved" in page.inner_text("#toast")
+    rules = call(server.base, "GET", f"/api/docs/{doc}/watermarks")[1]["rules"]
+    assert len(rules) == 1 and rules[0]["text"] == "Draft {page}" and rules[0]["cols"] == 3
+    assert page.locator("#wm-preview span").count() == 0
 
 
 def test_bookmark_dialog_saves_to_server(ui, server):
@@ -145,3 +149,22 @@ def test_locked_pdf_asks_for_password(ui, server, encrypted_pdf):
     assert "Opening cancelled" in page.inner_text("#toast")
     assert not page.is_visible("#password-dialog")
     assert not ui.errors
+
+
+def test_watermark_toggle_hides_it_on_screen(ui, server):
+    page = ui.page
+    doc = open_file(page, fixture("embedded.pdf"))
+    call(server.base, "PUT", f"/api/docs/{doc}/watermarks", {"rules": [{"text": "SHOWN", "rows": 1, "cols": 1}]})
+    page.reload()
+    page.wait_for_selector("#stage:not([hidden])")
+    page.wait_for_timeout(400)
+    assert "watermark=0" not in page.get_attribute("#page-img", "src")
+    assert page.locator('#export option[value="pdf-plain"]').count() == 1
+    page.click("#watermark-toggle")
+    page.wait_for_timeout(400)
+    assert page.inner_text("#watermark-toggle") == "Show watermarks"
+    assert "watermark=0" in page.get_attribute("#page-img", "src")
+    page.click("#watermark-toggle")
+    page.wait_for_timeout(400)
+    assert page.inner_text("#watermark-toggle") == "Hide watermarks"
+    assert "watermark=0" not in page.get_attribute("#page-img", "src")

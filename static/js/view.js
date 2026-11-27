@@ -1,6 +1,7 @@
 import { $, DOC_KEY, api, getJson, showError, state, t, toast } from "./core.js";
 import { restoreScroll } from "./events.js";
 import { drawTextLayer, clearSelection } from "./selection.js";
+import { renderWatermarkPreview, syncWatermarkToggle, watermarkOpen, watermarkQuery } from "./watermark.js";
 
 // ---------- document view ----------
 
@@ -26,7 +27,8 @@ export function renderAll(changedPages = null) {
   $("#undo").disabled = !hasDoc || state.info.undo_steps === 0;
   $("#redo").disabled = !hasDoc || state.info.redo_steps === 0;
   $("#delete-doc").disabled = !hasDoc;
-  ["#insert-blank", "#stamp-open", "#toc-open", "#annots-open"].forEach((sel) => ($(sel).disabled = !hasDoc));
+  ["#insert-blank", "#watermark-open", "#toc-open", "#annots-open"].forEach((sel) => ($(sel).disabled = !hasDoc));
+  syncWatermarkToggle();
   if (hasDoc) clampPage();
   // Undo, redo and page changes redraw every thumbnail. A normal edit only redraws the pages it touched.
   const key = hasDoc ? `${state.docId}:${state.info.pages.length}` : "";
@@ -66,7 +68,7 @@ export function renderPage() {
   img.style.width = `${page.width * state.zoom}px`;
   img.style.height = `${page.height * state.zoom}px`;
   const scale = Math.min(MAX_RENDER_SCALE, state.zoom * RENDER_SCALE);
-  img.src = `/api/docs/${state.docId}/pages/${state.page}.png?zoom=${scale}&v=${state.info.version}`;
+  img.src = `/api/docs/${state.docId}/pages/${state.page}.png?${pageQuery(scale)}`;
   const thumb = document.querySelectorAll(".thumb")[state.page];
   if (thumb) thumb.src = thumbUrl(state.page);
   $("#overlay").replaceChildren();
@@ -84,7 +86,12 @@ export function renderPageLabel() {
 }
 
 export function thumbUrl(i) {
-  return `/api/docs/${state.docId}/pages/${i}.png?zoom=${0.4 * RENDER_SCALE}&v=${state.info.version}`;
+  return `/api/docs/${state.docId}/pages/${i}.png?${pageQuery(0.4 * RENDER_SCALE)}`;
+}
+
+// The revision changes when the watermark rules change, so the browser does not show an old image.
+function pageQuery(zoom) {
+  return `zoom=${zoom}&v=${state.info.version}&w=${state.info.watermark_rev}${watermarkQuery()}`;
 }
 
 export function renderThumbs() {
@@ -126,6 +133,7 @@ export function syncOverlay() {
   svg.setAttribute("width", img.clientWidth);
   svg.setAttribute("height", img.clientHeight);
   svg.setAttribute("viewBox", `0 0 ${img.clientWidth} ${img.clientHeight}`);
+  if (watermarkOpen()) renderWatermarkPreview();
   if (state.hit && state.hit.page === state.page) {
     const s = scaleFactor();
     const [x0, y0, x1, y1] = state.hit.rect;

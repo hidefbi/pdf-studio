@@ -1,4 +1,4 @@
-import { $, api, errorText, getJson, postJson, state, t, toast } from "./core.js";
+import { $, api, errorText, getJson, state, t, toast } from "./core.js";
 import { renderAll } from "./view.js";
 import { download, runAction } from "./files.js";
 
@@ -19,14 +19,6 @@ export function bindPageTools() {
     toast(t("page_inserted"));
   }));
 
-  $("#stamp-open").addEventListener("click", () => {
-    $("#st-error").hidden = true;
-    $("#stamp-dialog").hidden = false;
-    $("#st-text").focus();
-  });
-  $("#st-cancel").addEventListener("click", () => ($("#stamp-dialog").hidden = true));
-  $("#stamp-form").addEventListener("submit", submitStamp);
-
   $("#toc-open").addEventListener("click", () => runAction(openTocDialog));
   $("#toc-add").addEventListener("click", () => {
     state.tocDraft.push({ level: 1, title: "", page: state.page + 1 });
@@ -43,30 +35,6 @@ export function showToolError(id, message) {
   const el = $(id);
   el.textContent = message;
   el.hidden = false;
-}
-
-export async function submitStamp(event) {
-  event.preventDefault();
-  const body = {
-    text: $("#st-text").value,
-    where: $("#st-where").value,
-    size: Number($("#st-size").value),
-    color: $("#st-color").value,
-    opacity: Number($("#st-opacity").value),
-    angle: Number($("#st-angle").value),
-    pages: $("#st-pages").value,
-    page: state.page,
-    behind: $("#st-behind").checked,
-  };
-  try {
-    await postJson(`/api/docs/${state.docId}/stamp`, body);
-    $("#stamp-dialog").hidden = true;
-    state.info = await getJson(`/api/docs/${state.docId}`);
-    renderAll();
-    toast(t("stamp_done"));
-  } catch (err) {
-    showToolError("#st-error", errorText(err));
-  }
 }
 
 
@@ -232,12 +200,17 @@ export async function exportReadonly(event) {
   const owner = $("#ro-owner").value;
   if (owner.length < 6) return showFormError(t("err_password_short"));
   if (owner !== $("#ro-owner2").value) return showFormError(t("err_password_mismatch"));
+  const openPassword = $("#ro-open").value;
+  if (Array.from(owner).length > 40 || Array.from(openPassword).length > 40) {
+    return showFormError(t("password_too_long"));
+  }
   const body = {
     owner_password: owner,
-    open_password: $("#ro-open").value || null,
+    open_password: openPassword || null,
     printing: $("#ro-print").value,
     changes: $("#ro-changes").value,
     allow_copy: $("#ro-copy").checked,
+    watermarks: $("#ro-watermarks").checked,
   };
   $("#ro-error").hidden = true;
   try {
@@ -254,8 +227,9 @@ export async function exportReadonly(event) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     closeReadonlyDialog();
     toast(t("readonly_done"));
-  } catch (_) {
-    // Never echo server messages here: validation errors can contain the typed password.
-    showFormError(t("readonly_failed"));
+  } catch (err) {
+    // Server text stays out of the dialog, since validation errors can echo the typed passwords.
+    // The status code is enough to report a failure.
+    showFormError(t("readonly_failed", { status: err.status || "network" }));
   }
 }
