@@ -163,4 +163,4 @@ Copyright (C) 2026 hidefbi.
 
 PDF Studio depends on PyMuPDF, which is available under AGPL-3.0 or a commercial license from Artifex. Because of that, this project is distributed under AGPL-3.0 as well. The other dependencies and their licenses are listed in [THIRD_PARTY.md](THIRD_PARTY.md).
 
-Version 2.0.1
+Version 2.0.2
